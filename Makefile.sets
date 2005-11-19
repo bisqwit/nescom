@@ -1,0 +1,44 @@
+CC=gcc
+CPP=g++
+#CXX=g++-2.95
+#CXX=g++-3.3
+CXX=g++
+#CXX=remotegcc -soktober -- g++
+
+# Options for compiling, generally.
+CPPFLAGS=-DVERSION=\"$(VERSION)\" -pipe -g
+#         -fmessage-length=0
+
+WARNINGS=-Wall \
+    -Wundef \
+    -Wcast-qual \
+    -Wpointer-arith \
+    -Wconversion \
+    -Wwrite-strings \
+    -Wsign-compare \
+    -Wredundant-decls \
+    -Wcast-align -Wformat
+
+#    -Wtraditional
+
+# C specific warnings
+CCOPTS=$(WARNINGS) -Waggregate-return -Wshadow -Winline \
+    -Wstrict-prototypes \
+    -Wmissing-prototypes
+
+# C++ specific warnings
+CXXOPTS=$(WARNINGS) \
+	-Woverloaded-virtual
+#	-Weffc++
+
+# Optimization
+OPTIM=-ffast-math -O
+#-march=pentiumpro
+
+# Flags.
+CFLAGS=$(OPTIM) $(CCOPTS)
+CXXFLAGS=$(OPTIM) $(CXXOPTS) -fno-default-inline
+#-fno-rtti
+
+#LDFLAGS=-pg -ax
+LDFLAGS=-g

@@ -1,0 +1,209 @@
+<html><head><meta http-equiv="Content-type" content="text/html; charset=iso-8859-1">
+ <title>Free NES assembler</title>
+ <style type="text/css"><!--
+TABLE.toc {border:0px}
+A:link,A:visited{text-decoration:none;color:#2A3B83}
+A:hover{text-decoration:underline;color:#002040}
+A:active{text-decoration:underline;color:#004060;background:#CCD8FF}
+TD.toc   {font-size:80%; font-family:Tahoma; text-align:left}
+H1       {font-size:250%; font-weight:bold} .level1 {text-align:center}
+H2       {font-size:200%; font-weight:bold} .level2 {margin-left:1%}
+H3       {font-size:160%; font-weight:bold} .level3 {margin-left:2%}
+H4       {font-size:145%; font-weight:bold} .level4 {margin-left:3%}
+H5       {font-size:130%; font-weight:bold} .level5 {margin-left:4%}
+H6       {font-size:110%; font-weight:bold} .level5 {margin-left:5%}
+BODY{background:white;color:black}
+CODE{font-family:lucida console,courier new,courier;color:#105000}
+PRE.smallerpre{font-family:lucida console,courier new,courier;font-size:80%;color:#500010;margin-left:30px}
+SMALL    {font-size:70%}
+.nonmail { visibility:hidden;position:absolute; top:0px;left:0px }
+.ismail  { font-weight:normal }
+--></style></head>
+ <body>
+  <h1>Free NES assembler</h1>
+  <h2 class=level2> 0. Contents </h2>
+  
+  This is the documentation of nescom-0.0.0.
+<div class=toc><table cellspacing=0 cellpadding=0 class=toc><tr><td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;1. <a href="#purpose">Purpose</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1. <a href="#history">History</a><br>&nbsp;&nbsp;&nbsp;2. <a href="#syntax">Supported syntax</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.1. <a href="#ops">Mnemonics</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.2. <a href="#addrmodes">Addressing modes</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.3. <a href="#opsize">Operand size control</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.4. <a href="#eval">Expression evaluation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.5. <a href="#segs">Segments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.6. <a href="#comments">Comments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.7. <a href="#separation">Command separation</a><br></td>
+<td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.8. <a href="#reloc">Code pointer relocation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.9. <a href="#branchlabels">Branch labels</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.10. <a href="#cpp">Preprocessor</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.11. <a href="#objfile">Object file format</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.12. <a href="#ips">IPS output support</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.13. <a href="#linkage">Linkage selection</a><br>&nbsp;&nbsp;&nbsp;3. <a href="#changelog">Changelog</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#bugs">Known bugs</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#copying">Copying</a><br>&nbsp;&nbsp;&nbsp;6. <a href="#download">Downloading</a><br></td>
+</tr></table></div><H2 id="purpose" class="level2"><a name="purpose"></a>1. Purpose</H2><div class="level2" id="divpurpose">
+
+This program reads symbolic 6502 machine code
+and compiles (assembles) it into a relocatable object file.
+<p>
+The produced object file is binary-compatible with those
+made with <a href="http://www.google.fi/search?q=xa65">XA65</a>.
+
+</div><H3 id="history" class="level3"><a name="history"></a>1.1. History</H3><div class="level3" id="divhistory">
+
+This program was born when Bisqwit needed to have something for
+NES that is already accomplished for SNES by
+<a href="http://bisqwit.iki.fi/source/snescom.html">snescom</a>.
+
+</div><H2 id="syntax" class="level2"><a name="syntax"></a>2. Supported syntax</H2><div class="level2" id="divsyntax">
+
+</div><H3 id="ops" class="level3"><a name="ops"></a>2.1. Mnemonics</H3><div class="level3" id="divops">
+
+The following mnemonics are supported:
+<p>
+<code>adc</code>, <code>and</code>, <code>asl</code>, <code>bcc</code>, 
+<code>bcs</code>, <code>beq</code>, <code>bit</code>, <code>bmi</code>, 
+<code>bne</code>, <code>bpl</code>, <code>brk</code>, <code>bvc</code>, 
+<code>bvs</code>, <code>clc</code>, <code>cld</code>, <code>cli</code>, 
+<code>clv</code>, <code>cmp</code>, <code>cpx</code>, <code>cpy</code>, 
+<code>dec</code>, <code>dex</code>, <code>dey</code>, <code>eor</code>, 
+<code>inc</code>, <code>inx</code>, <code>iny</code>, <code>jmp</code>, 
+<code>jsr</code>, <code>lda</code>, <code>ldx</code>, <code>ldy</code>, 
+<code>lsr</code>, <code>nop</code>, <code>ora</code>, <code>pha</code>, 
+<code>php</code>, <code>pla</code>, <code>plp</code>, <code>rol</code>, 
+<code>ror</code>, <code>rti</code>, <code>rts</code>, <code>sbc</code>, 
+<code>sec</code>, <code>sed</code>, <code>sei</code>, <code>sta</code>, 
+<code>stx</code>, <code>sty</code>, <code>tax</code>, <code>tay</code>, 
+<code>tsx</code>, <code>txa</code>, <code>txs</code>, <code>tya</code>
+</p>
+
+</div><H3 id="addrmodes" class="level3"><a name="addrmodes"></a>2.2. Addressing modes</H3><div class="level3" id="divaddrmodes">
+
+All the standard addressing modes of the 6502 cpu are supported.
+<p>
+<em>To be detailed later.</em>
+
+</div><H3 id="opsize" class="level3"><a name="opsize"></a>2.3. Operand size control</H3><div class="level3" id="divopsize">
+
+There are several operand prefixes
+that can be used to force a certain operand size/type.
+
+<ul>
+ <li><code>lda !$f0</code> would use 16-bit address instead of direct page.</li>
+ <li><code>lda #&lt;var</code> can be used to load the lower 8 bits of an external variable.</li>
+ <li><code>lda #&gt;var</code> can be used to load the upper 8 bits of an external variable.</li>
+</ul>
+
+</div><H3 id="eval" class="level3"><a name="eval"></a>2.4. Expression evaluation</H3><div class="level3" id="diveval">
+
+Expressions are supported. These are valid code:
+<ul>
+ <li><code>bra somewhere+1</code></li>
+ <li><code>lda #!address + $100</code></li>
+ <li><code>ldy #$1234 + ($6C * 3)</code></li>
+</ul>
+
+</div><H3 id="segs" class="level3"><a name="segs"></a>2.5. Segments</H3><div class="level3" id="divsegs">
+
+Code, labels and data can be generated to four segments:
+<code>text</code>, <code>data</code>, <code>zero</code> and <code>bss</code>.<br>
+Use <code>.text</code>, <code>.data</code>, <code>.zero</code> and <code>.bss</code>
+respectively to select the segment.<br>
+However, only the contents of <code>text</code>
+and <code>data</code> segments are saved into
+the o65 file. Labels are saved in all segments.
+
+</div><H3 id="comments" class="level3"><a name="comments"></a>2.6. Comments</H3><div class="level3" id="divcomments">
+
+Comments begin with a semicolon (;) and end with a newline.<br>
+A colon is allowed to appear in comment.
+
+</div><H3 id="separation" class="level3"><a name="separation"></a>2.7. Command separation</H3><div class="level3" id="divseparation">
+
+Commands are separated by newlines and colons (:).
+
+</div><H3 id="reloc" class="level3"><a name="reloc"></a>2.8. Code pointer relocation</H3><div class="level3" id="divreloc">
+
+You can use a command like <code>*= $F200</code> to change
+where the code goes by default.<br>
+With IPS this is especially useful.<br>
+You can change the code pointer as many times as you wish,
+but unless you're generating an IPS file, all code must be
+a continuous block.
+
+</div><H3 id="branchlabels" class="level3"><a name="branchlabels"></a>2.9. Branch labels</H3><div class="level3" id="divbranchlabels">
+
+The label <code>-</code> can be defined for branches backward
+and <code>+</code> for branches forward.
+
+</div><H3 id="cpp" class="level3"><a name="cpp"></a>2.10. Preprocessor</H3><div class="level3" id="divcpp">
+
+nescom uses <a href="http://gcc.gnu.org/">GCC</a> as a preprocessor.<br>
+You can use <code>#ifdef</code>, <code>#ifndef</code>, <code>#define</code>,
+<code>#if</code>, <code>#endif</code> and <code>#include</code> like
+in any C program. (See <a href="#bugs">bugs</a>)
+
+</div><H3 id="objfile" class="level3"><a name="objfile"></a>2.11. Object file format</H3><div class="level3" id="divobjfile">
+
+Currently nescom only produces relocatable object files (O65)
+or non-relocatable patch files (IPS).<br>
+The O65 file format has been
+<a href="http://www.google.com/search?q=6502+binary+relocation+format">documented</a>
+by André Fachat
+for the <a href="http://www.google.fi/search?q=xa65">XA65</a> project.
+
+</div><H3 id="ips" class="level3"><a name="ips"></a>2.12. IPS output support</H3><div class="level3" id="divips">
+
+This version of nescom allows you to create IPS files.<br>
+This IPS format has been extended to allow you to specify
+global symbols and externs to be patched later.<br>
+In the generated format:
+<ul>
+ <li>If the patch address is $000001, it means this
+     entry is a dynamic symbol. What follows is an asciiz
+     string (the symbol name), the address (3-byte lsb-first integer)
+     and the relocation size in bytes (1 byte).</li>
+ <li>If the patch address is $000002, it means this
+     entry is a global symbol. What follows is an asciiz
+     string (the symbol name) and the address (3-byte lsb-first integer)
+     where this symbol is located in.
+</ul>
+
+</div><H3 id="linkage" class="level3"><a name="linkage"></a>2.13. Linkage selection</H3><div class="level3" id="divlinkage">
+
+By default, O65 objects are linked to any free location in the ROM.<br>
+IPS files are linked to predefined locations.
+<p>
+With the <code>.link</code> statement, you can change that.
+<p>
+<code>.link page $3F</code> declares that this object should be
+placed into page $3F.<p>
+<code>.link group 1</code> declares that this object should be
+placed to the same page together with all other objects that
+want to be linked in group 1. This is useful when you want to
+ensure that certain tables or routines go to the same page,
+even if they are not in the same compilation unit.<br>
+The actual page is determined during link time, and you can
+get the page by using 24-bit (@) or segment reference (^)
+to a symbol from those modules.
+<p>
+<em>This is not completely ready for NES yet.</em>
+
+</div><H2 id="changelog" class="level2"><a name="changelog"></a>3. Changelog</H2><div class="level2" id="divchangelog">
+
+Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
+
+</div><H2 id="bugs" class="level2"><a name="bugs"></a>4. Known bugs</H2><div class="level2" id="divbugs">
+
+<ul>
+ <li><code>#include</code>d files aren't being properly preprocessed.</li>
+ <li>memory mapping hasn't been quite designed yet.</li>
+</ul>
+
+</div><H2 id="copying" class="level2"><a name="copying"></a>5. Copying</H2><div class="level2" id="divcopying">
+
+nescom has been written by Joel Yliluoma, a.k.a.
+<a href="http://iki.fi/bisqwit/">Bisqwit</a>,<br>
+and is distributed under the terms of the
+<a href="http://www.gnu.org/licenses/licenses.html#GPL">General Public License</a> (GPL).
+<p>
+If you happen to see this program useful for you, I'd
+appreciate if you tell me :) Perhaps it would motivate
+me to enhance the program.
+
+</div><H2 id="download" class="level2"><a name="download"></a>6. Downloading</H2><div class="level2" id="divdownload">
+   The official home page of nescom
+   is at <a href="http://iki.fi/bisqwit/source/nescom.html">http://iki.fi/bisqwit/source/nescom.html</a>.<br>
+   Check there for new versions.
+</div> <p align=right><small>Generated from
+       <tt>progdesc.php</tt> (last updated: Sun, 20 Nov 2005 00:20:48 +0200)<br>
+  with <tt>docmaker.php</tt> (last updated: Sun, 12 Jun 2005 06:08:02 +0300)<br>
+  at Sun, 20 Nov 2005 00:22:46 +0200</small>
+ </p>
+</body>
+</html>
