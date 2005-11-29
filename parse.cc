@@ -252,6 +252,8 @@ bool ParseExpression(ParseData& data, ins_parameter& result)
     if(prefix == FORCE_LOBYTE
     || prefix == FORCE_HIBYTE
     || prefix == FORCE_ABSWORD
+    || prefix == FORCE_LONG
+    || prefix == FORCE_SEGBYTE
       )
     {
         // good prefix
@@ -314,14 +316,22 @@ tristate ParseAddrMode(ParseData& data, unsigned modenum,
     {
         case AddrMode::tByte: result=result && p1.is_byte(); break;
         case AddrMode::tWord: result=result && p1.is_word(); break;
+        case AddrMode::tLong: result=result && p1.is_long(); break;
+        case AddrMode::tA: result=result && A_16bit ? p1.is_word() : p1.is_byte(); break;
+        case AddrMode::tX: result=result && X_16bit ? p1.is_word() : p1.is_byte(); break;
         case AddrMode::tRel8: ;
+        case AddrMode::tRel16: ;
         case AddrMode::tNone: ;
     }
     switch(modedata.p2)
     {
         case AddrMode::tByte: result=result && p2.is_byte(); break;
         case AddrMode::tWord: result=result && p2.is_word(); break;
+        case AddrMode::tLong: result=result && p2.is_long(); break;
+        case AddrMode::tA: result=result && A_16bit ? p2.is_word() : p2.is_byte(); break;
+        case AddrMode::tX: result=result && X_16bit ? p2.is_word() : p2.is_byte(); break;
         case AddrMode::tRel8: ;
+        case AddrMode::tRel16: ;
         case AddrMode::tNone: ;
     }
     

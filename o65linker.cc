@@ -8,6 +8,7 @@
 using std::make_pair;
 using std::list;
 using std::map;
+using std::string;
 
 #include "hash.hh"
 
@@ -60,7 +61,7 @@ class O65linker::SymCache
 public:
     void Update(const Object& o, unsigned objnum)
     {
-        const vector<string> symlist = o.object.GetSymbolList();
+        const vector<string> symlist = o.object.GetSymbolList(CODE);
         for(unsigned a=0; a<symlist.size(); ++a)
             sym_cache[symlist[a]] = objnum;
     }
@@ -84,7 +85,7 @@ void O65linker::AddObject(const O65& object, const string& what, LinkageWish lin
     }
     Object *newobj = new Object(object, what, linkage);
     
-    const vector<string> symlist = newobj->object.GetSymbolList();
+    const vector<string> symlist = newobj->object.GetSymbolList(CODE);
     
     unsigned collisions = 0;
     for(unsigned a=0; a<symlist.size(); ++a)
@@ -206,7 +207,7 @@ void O65linker::AddReference(const string& name, const ReferMethod& reference)
         const Object& o = *objects[tmp.first];
         if(o.linkage.type == LinkageWish::LinkHere)
         {
-            unsigned value = o.object.GetSymAddress(name);
+            unsigned value = o.object.GetSymAddress(CODE, name);
             // resolved referer
             FinishReference(reference, value, name);
             return;
@@ -326,7 +327,7 @@ void O65linker::Link()
             const pair<unsigned, bool> tmp = symcache->Find(ext);
             if(tmp.second)
             {
-                addr = objects[tmp.first]->object.GetSymAddress(ext);
+                addr = objects[tmp.first]->object.GetSymAddress(CODE, ext);
                 ++found;
             }
             
@@ -382,7 +383,7 @@ void O65linker::Link()
             const Object& o = *objects[tmp.first];
             if(o.linkage.type != LinkageWish::LinkHere) continue;
             
-            unsigned value = o.object.GetSymAddress(name);
+            unsigned value = o.object.GetSymAddress(CODE, name);
              
             // resolved referer
             FinishReference(referers[c].first, value, name);

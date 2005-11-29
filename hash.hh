@@ -9,6 +9,7 @@
 
 #if USE_HASH
 
+#include <cwchar>
 #include <string>
 
 #include <ext/hash_map>
@@ -43,6 +44,7 @@ namespace __gnu_cxx
         return h;
     }
   };
+  template<>
   struct hash<std::wstring>
   {
     size_t operator() (const std::wstring &s) const
@@ -57,6 +59,7 @@ namespace __gnu_cxx
         return h;
     }
   };
+  template<>
   struct hash<wchar_t>
   {
     size_t operator() (wchar_t n) const

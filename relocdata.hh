@@ -3,6 +3,9 @@
 
 #include <vector>
 #include <utility>
+#include <algorithm>
+
+enum SegmentSelection;
 
 template<typename VarType>
 class Relocdata
@@ -28,6 +31,17 @@ private:
         void AddReloc(Type addr, const VarType& s) { Relocs.push_back(RelocType(addr, s)); }
         
         RT(): Fixups(), Relocs() { }
+        
+        void sort()
+        {
+            /*
+              Fixups are sorted according to seg, then addr, then low/offpart
+              Relocs are sorted according to addr, then low/offpart, then symbol index
+              Primary use is to make binary searching work.
+            */
+            std::sort(Fixups.begin(), Fixups.end());
+            std::sort(Relocs.begin(), Relocs.end());
+        }
     };
     
     typedef std::pair<unsigned,unsigned> r2_t;
@@ -42,6 +56,9 @@ public:
     typedef RT<unsigned> R24_t;    R24_t R24;       // addr
     
     Relocdata(): R16(), R16lo(), R16hi(), R24seg(), R24() { }
+    
+    void clear() { R16.clear(); R16lo.clear(); R16hi.clear(); R24seg.clear(); R24.clear(); }
+    void sort() { R16.sort(); R16lo.sort(); R16hi.sort(); R24seg.sort(); R24.sort(); }
 };
 
 #endif

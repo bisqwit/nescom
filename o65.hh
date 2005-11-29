@@ -115,7 +115,7 @@ public:
     void SetError();
     
     /* Get relocation data of the given segment */
-    const Relocdata<unsigned> GetRelocData(SegmentSelection seg);
+    const Relocdata<unsigned> GetRelocData(SegmentSelection seg) const;
 
 private:
     class Defs;

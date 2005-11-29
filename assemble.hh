@@ -11,7 +11,10 @@ namespace
         FORCE_LOBYTE  = '<',
         FORCE_HIBYTE  = '>',
         FORCE_ABSWORD = '!',
-        FORCE_REL8    = 1
+        FORCE_LONG    = '@',
+        FORCE_SEGBYTE = '^',
+        FORCE_REL8    = 1,
+        FORCE_REL16   = 2
     };
     
     enum

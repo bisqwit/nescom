@@ -9,7 +9,7 @@
 #include "relocdata.hh"
 #include "warning.hh"
 
-#define PROGNAME "nescom"
+#define PROGNAME "snescom"
 
 class Object::Segment
 {
@@ -89,6 +89,7 @@ public:
                       long value, unsigned CurScope);
     void DumpExterns(const char *segname) const;
     void DumpFixups(const char *segname) const;
+
 
 
     /// MEMORY ///
@@ -414,11 +415,36 @@ void Object::Segment::CloseSegment()
                 SetByte(address+1, (value >> 8) & 0xFF);
                 break;
             }
+            case FORCE_LONG:
+            {
+                R.R24.AddReloc(address, name);
+
+                SetByte(address,   value & 0xFF);
+                SetByte(address+1, (value >> 8) & 0xFF);
+                SetByte(address+2, (value >> 16) & 0xFF);
+                break;
+            }
+            case FORCE_SEGBYTE:
+            {
+                RT::R24seg_t::Type data(address, value & 0xFFFF);
+                
+                R.R24seg.AddReloc(data, name);
+
+                SetByte(address, (value >> 16) & 0xFF);
+                break;
+            }
             case FORCE_REL8:
             {
                 std::fprintf(stderr,
                     "Error: Unresolved short relative '%s'\n", name.c_str()
                             );                                             
+                break;
+            }
+            case FORCE_REL16:
+            {
+                std::fprintf(stderr,
+                    "Error: Unresolved near relative '%s'\n", name.c_str()
+                            );
                 break;
             }
         }
@@ -458,13 +484,28 @@ void Object::Segment::CloseSegment()
                 SetByte(address+1, (value >> 8) & 0xFF);
                 break;
             }
+            case FORCE_LONG:
+            {
+                R.R24.AddFixup(seg, address);
+                SetByte(address,   value & 0xFF);
+                SetByte(address+1, (value >> 8) & 0xFF);
+                SetByte(address+2, (value >> 16) & 0xFF);
+                break;
+            }
+            case FORCE_SEGBYTE:
+            {
+                RT::R24seg_t::Type data(address, value & 0xFFFF);
+                R.R24seg.AddFixup(seg, data);
+                SetByte(address, (value >> 16) & 0xFF);
+                break;
+            }
             case FORCE_REL8:
             {
                 const long diff = value - (long)address - 1;
                 
                 int threshold = 0;
-                //extern bool already_reprocessed;
-                //if(!already_reprocessed) threshold = 20;
+                extern bool already_reprocessed;
+                if(!already_reprocessed) threshold = 20;
                 
                 if(diff < -0x80+threshold || diff >= 0x80-threshold)
                 {
@@ -473,6 +514,21 @@ void Object::Segment::CloseSegment()
                 }
                 
                 SetByte(address, diff & 0xFF);
+                
+                break;
+            }
+            case FORCE_REL16:
+            {
+                const long diff = value - (long)address - 2;
+                
+                if(diff < -0x8000 || diff >= 0x8000)
+                {
+                    std::fprintf(stderr,
+                        "Error: Near jump out of range (%ld)\n", diff);
+                }
+                
+                SetByte(address,   diff & 0xFF);
+                SetByte(address+1, (diff >> 8) & 0xFF);
                 
                 break;
             }
@@ -1064,7 +1120,7 @@ void Object::WriteO65(std::FILE* fp)
     
     if(use32) Mode |= 0x2000; // Use 32-bit addresses
     
-    // Put O65 header
+    // Put O65 headerl
     PutS("\1\0o65\0", 6, fp);
     
     // Put Mode

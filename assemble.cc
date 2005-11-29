@@ -12,6 +12,9 @@
 #include "insdata.hh"
 #include "precompile.hh"
 
+bool A_16bit = true;
+bool X_16bit = true;
+
 std::string PrevBranchLabel; // What "-" means
 std::string NextBranchLabel; // What "+" means
 
@@ -254,6 +257,40 @@ GotLabel:
                     choices.push_back(choice);
                 }
             }
+            else if(tok == ".long")
+            {
+                OpcodeChoice choice;
+                bool first=true, ok=true;
+                for(;;)
+                {
+                    data.SkipSpace();
+                    if(data.EOF()) break;
+                    
+                    if(first)
+                        first=false;
+                    else
+                    {
+                        if(data.PeekC() == ',') { data.GetC(); data.SkipSpace(); }
+                    }
+                    
+                    ins_parameter p;
+                    if(!ParseExpression(data, p)
+                    || p.is_long().is_false())
+                    {
+                        /* FIXME: syntax error */
+                        std::fprintf(stderr, "Syntax error at '%s'\n",
+                            data.GetRest().c_str());
+                        ok = false;
+                        break;
+                    }
+                    choice.parameters.push_back(std::make_pair(3, p));
+                }
+                if(ok)
+                {
+                    choice.is_certain = true;
+                    choices.push_back(choice);
+                }
+            }
             else if(!tok.empty() && tok[0] != '.')
             {
                 // Labels may not begin with '.'
@@ -324,6 +361,10 @@ GotLabel:
                         
                         if(op == "sb") result.StartScope();
                         else if(op == "eb") result.EndScope();
+                        else if(op == "as") A_16bit = false;
+                        else if(op == "al") A_16bit = true;
+                        else if(op == "xs") X_16bit = false;
+                        else if(op == "xl") X_16bit = true;
                         else if(op == "gt") result.SelectTEXT();
                         else if(op == "gd") result.SelectDATA();
                         else if(op == "gz") result.SelectZERO();
@@ -360,6 +401,8 @@ GotLabel:
                             
                             if(AddrModes[addrmode].p1 == AddrMode::tRel8)
                                 p1.prefix = FORCE_REL8;
+                            if(AddrModes[addrmode].p1 == AddrMode::tRel16)
+                                p1.prefix = FORCE_REL16;
                             
                             choice.parameters.push_back(std::make_pair(1, opcode));
                             if(op1size)choice.parameters.push_back(std::make_pair(op1size, p1));
@@ -528,6 +571,7 @@ GotLabel:
                 {
                     case 1: prefix = FORCE_LOBYTE; break;
                     case 2: prefix = FORCE_ABSWORD; break;
+                    case 3: prefix = FORCE_LONG; break;
                     default:
                         std::fprintf(stderr, "Internal error - unknown size: %u\n",
                             size);
@@ -539,7 +583,7 @@ GotLabel:
                 result.AddExtern(prefix, ref, value);
                 value = 0;
             }
-            else if(prefix == FORCE_REL8)
+            else if(prefix == FORCE_REL8 || prefix == FORCE_REL16)
             {
                 std::fprintf(stderr, "Error: Relative target must not be a constant\n");
                 // FIXME: It isn't so bad...
@@ -547,6 +591,13 @@ GotLabel:
 
             switch(prefix)
             {
+                case FORCE_SEGBYTE:
+                    result.GenerateByte((value >> 16) & 0xFF);
+                    break;
+                case FORCE_LONG:
+                    result.GenerateByte(value & 0xFF);
+                    value >>= 8;
+                    //passthru
                 case FORCE_ABSWORD:
                     result.GenerateByte(value & 0xFF);
                     //passthru
@@ -557,6 +608,9 @@ GotLabel:
                     result.GenerateByte(value & 0xFF);
                     break;
                 
+                case FORCE_REL16:
+                    result.GenerateByte(0x00);
+                    //passthru
                 case FORCE_REL8:
                     result.GenerateByte(0x00);
                     break;

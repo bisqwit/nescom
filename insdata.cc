@@ -103,7 +103,11 @@ unsigned GetOperand1Size(unsigned modenum)
         {
             case AddrMode::tRel8:
             case AddrMode::tByte: return 1;
+            case AddrMode::tRel16:
             case AddrMode::tWord: return 2;
+            case AddrMode::tLong: return 3;
+            case AddrMode::tA: return 0;
+            case AddrMode::tX: return 0;
             case AddrMode::tNone: ;
         }
     return 0;
@@ -116,7 +120,11 @@ unsigned GetOperand2Size(unsigned modenum)
         {
             case AddrMode::tRel8:
             case AddrMode::tByte: return 1;
+            case AddrMode::tRel16:
             case AddrMode::tWord: return 2;
+            case AddrMode::tLong: return 3;
+            case AddrMode::tA: return 0;
+            case AddrMode::tX: return 0;
             case AddrMode::tNone: ;
         }
     return 0;

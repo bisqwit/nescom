@@ -37,8 +37,6 @@ public:
     void Report() const;
     void DumpPageMap(unsigned pagenum) const;
     
-    void VerboseDump() const;
-    
     // Uses segment-relative addresses (16-bit)
     void Add(unsigned page, unsigned begin, unsigned length);
     void Del(unsigned page, unsigned begin, unsigned length);
@@ -52,10 +50,7 @@ public:
     const std::set<unsigned> GetPageList() const;
     const freespaceset& GetList(unsigned pagenum) const;
 
-    /* These don't need to be private, but they are
-     * now to ensure Chronotools doesn't use them.
-     */
-private:
+public:
     // Returns segment-relative address (16-bit)
     unsigned Find(unsigned page, unsigned length);
     // Returns abbsolute address (24-bit)

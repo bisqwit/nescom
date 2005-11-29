@@ -18,19 +18,13 @@ CXX=$(HOST)g++
 CC=$(HOST)gcc
 CPP=$(HOST)gcc
 
-DEPDIRS = argh/
+DEPDIRS =
 
 OPTIM=-O3
 
-CPPFLAGS += -I. -Iargh
+CPPFLAGS += -I.
 
-# For DYNAMIC argh-linking, use:
-#ARGHLINK=-Largh -largh
-# For STATIC argh-linking, use:
-ARGHLINK=argh/libargh.a
-#ARGHLINK=utils/asm/argh/libargh.a
-
-VERSION=0.0.0
+VERSION=0.1.0
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -50,14 +44,11 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           o65.cc o65.hh relocdata.hh \
           o65linker.cc o65linker.hh \
           refer.cc refer.hh msginsert.hh \
-          space.cc space.hh rommap.hh \
+          space.cc space.hh romaddr.hh \
           binpacker.hh binpacker.tcc \
           logfiles.hh \
           rangeset.hh rangeset.tcc range.hh \
-          \
-          argh/argh.cc argh/argh.hh argh/argh.h argh/argh-c.inc argh/docmaker.php \
-          argh/Makefile argh/depfun.mak argh/Makefile.sets argh/progdesc.php \
-          argh/COPYING argh/README.html
+          miscfun.hh miscfun.tcc
 
 PREFIX=/usr/local
 BINDIR=$(PREFIX)/bin
@@ -65,9 +56,9 @@ BINDIR=$(PREFIX)/bin
 ARCHNAME=nescom-$(VERSION)
 ARCHDIR=archives/
 
-PROGS=nescom
+PROGS=nescom disasm
 
-INSTALLPROGS=snescom
+INSTALLPROGS=nescom
 INSTALL=install
 
 all: $(PROGS)
@@ -76,21 +67,17 @@ nescom: \
 		assemble.o insdata.o object.o \
 		expr.o parse.o precompile.o \
 		dataarea.o \
-		main.o warning.o \
-		argh/libargh.a
+		main.o warning.o
 	$(CXX) $(CXXFLAGS) -g -o $@ $^ \
-		$(LDFLAGS) $(ARGHLINK)
+		$(LDFLAGS)
 
-disasm: disasm.o
+disasm: disasm.o romaddr.o o65.o
 	$(CXX) $(CXXFLAGS) -g -o $@ $^
 
-argh/libargh.a: FORCE
-	$(MAKE) -C argh libargh.a
-
 clean: FORCE
-	rm -f *.o $(PROGS) argh/*.o argh/*.lo argh/libargh.a argh/libargh.so
+	rm -f *.o $(PROGS)
 distclean: clean
-	rm -f *~ .depend argh/*~ argh/.depend
+	rm -f *~ .depend
 realclean: distclean
 
 

@@ -6,7 +6,7 @@
 #include "precompile.hh"
 #include "warning.hh"
 
-#include <argh.hh>
+#include <getopt.h>
 
 bool already_reprocessed = false;
 
@@ -25,30 +25,8 @@ namespace
     }
 }
 
-int main(int argc, const char* const *argv)
+int main(int argc, char**argv)
 {
-    ParamHandler Argh;
-    
-    Argh.AddLong("help",       'h').SetBool().SetDesc("This help");
-    Argh.AddLong("version",    500).SetBool().SetDesc("Displays version information");
-    Argh.AddString(            'o').SetDesc("Place the output into <file>", "<file>");
-    Argh.AddBool(              'E').SetDesc("Preprocess only");
-    Argh.AddBool(              'c').SetDesc("Ignored for gcc-compatibility");
-
-    Argh.AddLong("submethod", 501).SetString().
-        SetDesc("Select subprocess method: temp,thread,pipe", "<method>");
-    Argh.AddLong("temps", 502).SetBool().SetDesc("Short for --submethod=temp");
-    Argh.AddLong("pipes", 503).SetBool().SetDesc("Short for --submethod=pipe");
-    Argh.AddLong("threads", 504).SetBool().SetDesc("Short for --submethod=thread");
-
-    Argh.AddLong("outformat", 601).SetString().
-        SetDesc("Select output format: ips,o65", "<format>");
-    Argh.AddBool('I').SetDesc("Short for --outformat=ips");
-
-    Argh.AddString('W').SetDesc("Enable warnings", "<type>");
-    
-    Argh.StartParse(argc, argv);
-    
     bool assemble = true;
     std::vector<std::string> files;
     
@@ -57,22 +35,36 @@ int main(int argc, const char* const *argv)
 
     for(;;)
     {
-        switch(Argh.GetParam())
+        int option_index = 0;
+        static struct option long_options[] =
         {
-            case -1: goto EndArgList;
-            
-            case 500: //version
+            {"help",     0,0,'h'},
+            {"version",  0,0,'V'},
+            {"output",   0,0,'o'},
+            {"preprocess",0,0,'E'},
+            {"compile",   0,0,'c'},
+            {"submethod", 0,0,501},
+            {"outformat", 0,0,'f'},
+            {"out_ips",   0,0,'I'},
+            {"warn",      0,0,'W'},
+            {0,0,0,0}
+        };
+        int c = getopt_long(argc,argv, "hVo:EcJf:IW:", long_options, &option_index);
+        if(c==-1) break;
+        switch(c)
+        {
+            case 'V': //version
                 printf(
                     "%s %s\n"
                     "Copyright (C) 1992,2005 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "This is free software; see the source for copying conditions. There is NO\n"
                     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n",
-                    Argh.ProgName().c_str(), VERSION
+                    argv[0], VERSION
                       );
                 return 0;
             case 501: //submethod
             {
-                const std::string method = Argh.GetString();
+                const std::string method = optarg;
                 if(method == "temp" || method == "temps")
                     UseTemps();
                 else if(method == "thread" || method == "threads")
@@ -87,13 +79,10 @@ int main(int argc, const char* const *argv)
                 }
                 break;
             }
-            case 502: if(Argh.GetBool()) UseTemps(); break;
-            case 503: if(Argh.GetBool()) UseFork(); break;
-            case 504: if(Argh.GetBool()) UseThreads(); break;
             
             case 601:
             {
-                const std::string format = Argh.GetString();
+                const std::string format = optarg;
                 if(format == "ips" || format == "o65")
                     SetOutputFormat(format);
                 else
@@ -103,7 +92,7 @@ int main(int argc, const char* const *argv)
                 }
                 break;
             }
-            case 'I': if(Argh.GetBool()) SetOutputFormat("ips"); break;
+            case 'I': SetOutputFormat("ips"); break;
             
             case 'h':
                 std::printf(
@@ -111,17 +100,25 @@ int main(int argc, const char* const *argv)
                     "Copyright (C) 1992,2005 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "\nUsage: %s [<option> [<...>]] <file> [<...>]\n"
                     "\nAssembles 6502 code.\n"
-                    "\nOptions:\n",
-                    Argh.ProgName().c_str());
-                Argh.ListOptions();
-                std::printf("\nNo warranty whatsoever.\n");
+                    "\nOptions:\n"
+                    " --help, -h            This help\n"
+                    " --version, -V         Displays version information\n"
+                    " -o <file>             Places the output into <file>\n"
+                    " -E                    Preprocess only\n"
+                    " -c                    Ignored for gcc-compatibility\n"
+                    " --version             Displays version information\n"
+                    " --submethod <method>  Select subprocess method: temp,thread,pipe\n"
+                    " --outformat <format>  Select output format: ips,o65\n"
+                    " -W <type>             Enable warnings\n"
+                    "\nNo warranty whatsoever.\n",
+                    argv[0]);
                 return 0;
             case 'E':
-                assemble = !Argh.GetBool();
+                assemble = false;
                 break;
             case 'o':
             {
-                outfn = Argh.GetString();
+                outfn = optarg;
                 if(outfn != "-")
                 {
                     if(output)
@@ -132,33 +129,34 @@ int main(int argc, const char* const *argv)
                     if(!output)
                     {
                         std::perror(outfn.c_str());
-                ErrorExit:
-                        if(output)
-                        {
-                            fclose(output);
-                            remove(outfn.c_str());
-                        }
-                        return -1;
+                        goto ErrorExit;
                     }
                 }
                 break;
             }
             case 'W':
             {
-                EnableWarning(Argh.GetString());
+                EnableWarning(optarg);
                 break;
             }
-            default:
-                files.push_back(Argh.GetString());
+            case '?':
+                goto ErrorExit;
         }
     }
-EndArgList:
-    if(!Argh.ok()) goto ErrorExit;
-    if(!files.size())
+    
+    while(optind < argc)
+        files.push_back(argv[optind++]);
+
+    if(files.empty())
     {
-        fprintf(stderr, "Error: Assemble what? See %s --help\n",
-            Argh.ProgName().c_str());
-        goto ErrorExit;
+        fprintf(stderr, "Error: Assemble what? See %s --help\n", argv[0]);
+    ErrorExit:
+        if(output)
+        {
+            fclose(output);
+            remove(outfn.c_str());
+        }
+        return -1;
     }
     
     Object obj;
@@ -174,6 +172,7 @@ EndArgList:
      *        - Verbose errors
      */
     
+Reprocess:
     obj.ClearMost();
     
     for(unsigned a=0; a<files.size(); ++a)
@@ -192,7 +191,6 @@ EndArgList:
         }
         else
         {
-            //stdin.
         }
     
         if(assemble)

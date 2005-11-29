@@ -1,8 +1,8 @@
 #include <cstdio>
 
 #include "space.hh"
-#include "logfiles.hh"
 #include "binpacker.hh"
+#include "romaddr.hh"
 
 using namespace std;
 
@@ -12,8 +12,6 @@ freespacemap::freespacemap() : quiet(false)
 
 unsigned freespacemap::Find(unsigned page, unsigned length)
 {
-    FILE *log = GetLogFile("mem", "log_addrs");
-
     iterator mapi = find(page);
     if(mapi == end())
     {
@@ -22,20 +20,16 @@ unsigned freespacemap::Find(unsigned page, unsigned length)
             fprintf(stderr,
                 "Page %02X is FULL! No %u bytes of free space there!\n",
                 page, length);
-            if(log)
-            fprintf(log,
-                "Page %02X is FULL! No %u bytes of free space there!\n",
-                page, length);
         }
         return NOWHERE;
     }
     freespaceset &spaceset = mapi->second;
-    freespaceset::const_iterator reci;
 
     unsigned bestscore = 0;
     unsigned bestpos   = NOWHERE;
     
-    for(reci = spaceset.begin(); reci != spaceset.end(); ++reci)
+    for(freespaceset::const_iterator reci = spaceset.begin();
+        reci != spaceset.end(); ++reci)
     {
         const unsigned recpos = reci->lower;
         const unsigned reclen = reci->upper - recpos;
@@ -70,10 +64,6 @@ unsigned freespacemap::Find(unsigned page, unsigned length)
             fprintf(stderr,
                 "Can't find %u bytes of free space in page %02X! (Total left: %u)\n",
                 length, page, size);
-            if(log)
-            fprintf(log,
-                "Can't find %u bytes of free space in page %02X! (Total left: %u)\n",
-                length, page, size);
         }
         return NOWHERE;
     }
@@ -93,37 +83,14 @@ void freespacemap::DumpPageMap(unsigned pagenum) const
     }
 
     const freespaceset &spaceset = mapi->second;
-    freespaceset::const_iterator reci;
     
     fprintf(stderr, "Map of page %02X:\n", pagenum);
-    for(reci = spaceset.begin(); reci != spaceset.end(); ++reci)
+    for(freespaceset::const_iterator
+        reci = spaceset.begin(); reci != spaceset.end(); ++reci)
     {
         unsigned recpos = reci->lower;
         unsigned reclen = reci->upper - recpos;
         fprintf(stderr, "  %X: %u\n", recpos, reclen);
-    }
-}
-
-#include "rommap.hh"
-void freespacemap::VerboseDump() const
-{
-    FILE *log = GetLogFile("mem", "log_addrs");
-    if(!log) return;
-
-    for(const_iterator i = begin(); i != end(); ++i)
-    {
-        unsigned page = i->first;
-        const freespaceset &spaceset = i->second;
-        freespaceset::const_iterator reci;
-        for(reci = spaceset.begin(); reci != spaceset.end(); ++reci)
-        {
-            unsigned recpos = reci->lower;
-            unsigned reclen = reci->upper - recpos;
-            
-            unsigned pos = (page << 16) | recpos;
-            
-            MarkFree(pos, reclen, "free");
-        }
     }
 }
 
@@ -134,9 +101,10 @@ void freespacemap::Report() const
     unsigned total=0;
     for(i=begin(); i!=end(); ++i)
     {
-        freespaceset::const_iterator j;
+        //DumpPageMap(i->first);
         unsigned thisfree = 0, hunkcount = 0;
-        for(j=i->second.begin(); j!=i->second.end(); ++j)
+        for(freespaceset::const_iterator j=i->second.begin();
+            j!=i->second.end(); ++j)
         {
             thisfree += j->length();
             ++hunkcount;
@@ -156,9 +124,9 @@ unsigned freespacemap::Size() const
     unsigned total=0;
     for(i=begin(); i!=end(); ++i)
     {
-        freespaceset::const_iterator j;
         unsigned thisfree = 0;
-        for(j=i->second.begin(); j!=i->second.end(); ++j)
+        for(freespaceset::const_iterator j=i->second.begin();
+            j!=i->second.end(); ++j)
         {
             thisfree += j->length();
         }
@@ -173,8 +141,8 @@ unsigned freespacemap::Size(unsigned page) const
     unsigned total=0;
     if(i != end())
     {
-        freespaceset::const_iterator j;
-        for(j=i->second.begin(); j!=i->second.end(); ++j)
+        for(freespaceset::const_iterator
+            j=i->second.begin(); j!=i->second.end(); ++j)
         {
             total += j->length();
         }
@@ -205,7 +173,6 @@ void freespacemap::Add(unsigned page, unsigned begin, unsigned length)
 {
     //fprintf(stderr, "Adding %u bytes of free space at %02X:%04X\n", length, page, begin);
     operator[] (page).set(begin, begin+length);
-    operator[] (page).compact();
 }
 void freespacemap::Add(unsigned longaddr, unsigned length)
 {
@@ -220,7 +187,6 @@ void freespacemap::Del(unsigned page, unsigned begin, unsigned length)
     freespaceset &spaceset = i->second;
     
     spaceset.erase(begin, begin+length);
-    spaceset.compact();
 }
 void freespacemap::Del(unsigned longaddr, unsigned length)
 {
@@ -229,22 +195,20 @@ void freespacemap::Del(unsigned longaddr, unsigned length)
 
 void freespacemap::Compact()
 {
+/*
     for(iterator i = begin(); i != end(); ++i)
         i->second.compact();
+*/
 }
 
 bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
 {
-    FILE *log = GetLogFile("mem", "log_addrs");
-
     const_iterator i = find(pagenum);
     if(i == end())
     {
         if(!quiet)
         {
             fprintf(stderr, "ERROR: Page %02X is totally empty.\n", pagenum);
-            if(log)
-            fprintf(log, "ERROR: Page %02X is totally empty.\n", pagenum);
         }
         return true;
     }
@@ -282,9 +246,6 @@ bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
         {
             fprintf(stderr, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
                 pagenum, totalsize, totalspace);
-            if(log)
-            fprintf(log, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
-                pagenum, totalsize, totalspace);
         }
     }
     
@@ -315,16 +276,12 @@ bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
         if(!quiet)
         {
             fprintf(stderr, "ERROR: Organization to page %02X failed\n", pagenum);
-            if(log)
-            fprintf(log, "ERROR: Organization to page %02X failed\n", pagenum);
         }
     return Errors;
 }
 
 bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
 {
-    FILE *log = GetLogFile("mem", "log_addrs");
-
     vector<unsigned> items;
     vector<unsigned> holes;
     vector<unsigned> holepages;
@@ -344,8 +301,7 @@ bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
     {
         unsigned pagenum = i->first;
         const freespaceset &pagemap = i->second;
-        freespaceset::const_iterator j;
-        for(j=pagemap.begin(); j!=pagemap.end(); ++j)
+        for(freespaceset::const_iterator j=pagemap.begin(); j!=pagemap.end(); ++j)
         {
             const unsigned recpos = j->lower;
             const unsigned reclen = j->upper - recpos;
@@ -362,15 +318,13 @@ bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
         {
             fprintf(stderr, "ERROR: No %u bytes of space available (only %u there)!\n",
                 totalsize, totalspace);
-            if(log)
-            fprintf(log, "ERROR: No %u bytes of space available (only %u there)!\n",
-                totalsize, totalspace);
         }
     }
     
     vector<unsigned> organization = PackBins(holes, items);
     
-    bool Errors = false;
+    unsigned ErrorSize=0;
+    unsigned ErrorCount=0;
     for(unsigned a=0; a<blocks.size(); ++a)
     {
         unsigned itemsize = blocks[a].len;
@@ -387,18 +341,17 @@ bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
         }
         else
         {
-            Errors = true;
+            ++ErrorCount;
+            ErrorSize += itemsize;
         }
         blocks[a].pos = spaceptr;
     }
-    if(Errors)
+    if(ErrorCount != 0)
         if(!quiet)
         {
-            fprintf(stderr, "ERROR: Organization failed\n");
-            if(log)
-            fprintf(log, "ERROR: Organization failed\n");
+            fprintf(stderr, "ERROR: Organization failed (%u errors, %u bytes)\n", ErrorCount, ErrorSize);
         }
-    return Errors;
+    return ErrorCount != 0;
 }
 
 bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned &page)
@@ -429,8 +382,8 @@ bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned 
             const freespaceset &pagemap = find(pagenum)->second;
             
             unsigned freesize = 0;
-            freespaceset::const_iterator j;
-            for(j=pagemap.begin(); j!=pagemap.end(); ++j)
+            for(freespaceset::const_iterator j=pagemap.begin();
+                j!=pagemap.end(); ++j)
             {
                 unsigned reclen = j->length();
                 freesize += reclen;
@@ -461,16 +414,14 @@ bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned 
 
 unsigned freespacemap::FindFromAnyPage(unsigned length)
 {
-    FILE *log = GetLogFile("mem", "log_addrs");
-
     unsigned leastfree=0, bestpage=0x3F; /* guess */
     bool first=true;
     for(const_iterator i=begin(); i!=end(); ++i)
     {
         const freespaceset &pagemap = i->second;
         
-        freespaceset::const_iterator j;
-        for(j=pagemap.begin(); j!=pagemap.end(); ++j)
+        for(freespaceset::const_iterator j=pagemap.begin();
+            j!=pagemap.end(); ++j)
         {
             unsigned reclen = j->length();
             if(reclen < length) continue;
@@ -485,8 +436,6 @@ unsigned freespacemap::FindFromAnyPage(unsigned length)
     if(first)
     {
         fprintf(stderr, "No %u-byte free space block available!\n", length);
-        if(log)
-            fprintf(log, "No %u-byte free space block available!\n", length);
         return NOWHERE;
     }
     return Find(bestpage, length) | (bestpage << 16);
@@ -526,7 +475,7 @@ void freespacemap::OrganizeO65linker(O65linker& objects)
             case LinkageWish::LinkHere:
             {
                 /* no linking, just convert the address */
-                addrs[a] = ROM2SNESaddr(addrs[a]);
+                addrs[a] = ROM2NESaddr(addrs[a]);
                 break;
             }
         }
@@ -539,6 +488,8 @@ void freespacemap::OrganizeO65linker(O65linker& objects)
     {
         const unsigned page = i->first;
         const vector<unsigned>& items = i->second;
+        
+        //fprintf(stderr, "Linking %u items to page $%02X:\n", items.size(), page);
         
         vector<freespacerec> Organization(items.size());
         
@@ -553,9 +504,14 @@ void freespacemap::OrganizeO65linker(O65linker& objects)
             if(addr != NOWHERE)
             {
                 addr |= (page << 16);
-                addr = ROM2SNESaddr(addr);
+                addr = ROM2NESaddr(addr);
             }
-            addrs[items[c]] = addr;
+            
+            unsigned objno = items[c];
+            
+            //fprintf(stderr, "%5u: %06X (%s)\n", c, addr, objects.GetName(objno).c_str());
+            
+            addrs[objno] = addr;
         }
     }
     
@@ -576,20 +532,28 @@ void freespacemap::OrganizeO65linker(O65linker& objects)
         unsigned page = NOWHERE;
         OrganizeToAnySamePage(Organization, page);
         
+        //fprintf(stderr, "Linking %u items to page $%02X (group %u)\n", items.size(), page, i->first);
+        
         for(unsigned c=0; c<items.size(); ++c)
         {
             unsigned addr = Organization[c].pos;
             if(addr != NOWHERE)
             {
                 addr |= (page << 16);
-                addr = ROM2SNESaddr(addr);
+                addr = ROM2NESaddr(addr);
             }
-            addrs[items[c]] = addr;
+            unsigned objno = items[c];
+            
+            //fprintf(stderr, "%5u: %06X (%s)\n", c, addr, objects.GetName(objno).c_str());
+            
+            addrs[objno] = addr;
         }
     }
     
     /* LAST link those which go anywhere */
 
+    //fprintf(stderr, "Linking %u items to various addresses\n", items.size());
+    
     vector<freespacerec> Organization(items.size());
 
     for(unsigned c=0; c<items.size(); ++c)
@@ -602,9 +566,13 @@ void freespacemap::OrganizeO65linker(O65linker& objects)
         unsigned addr = Organization[c].pos;
         if(addr != NOWHERE)
         {
-            addr = ROM2SNESaddr(addr);
+            addr = ROM2NESaddr(addr);
         }
-        addrs[items[c]] = addr;
+        unsigned objno = items[c];
+        
+        //fprintf(stderr, "%5u: %06X (%s)\n", c, addr, objects.GetName(objno).c_str());
+        
+        addrs[objno] = addr;
     }
     
     /* Everything done. */

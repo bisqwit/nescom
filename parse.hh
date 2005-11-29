@@ -50,7 +50,8 @@ struct ins_parameter
     tristate is_byte() const
     {
         if(prefix == FORCE_LOBYTE
-        || prefix == FORCE_HIBYTE)
+        || prefix == FORCE_HIBYTE
+        || prefix == FORCE_SEGBYTE)
         {
             return true;
         }
@@ -67,6 +68,15 @@ struct ins_parameter
         long value = exp->GetConst();
         return value >= -0x8000 && value < 0x10000;
     }
+    tristate is_long() const
+    {
+        if(prefix == FORCE_LONG) return true;
+        if(prefix) return false;
+        if(!exp->IsConst()) return maybe;
+        long value = exp->GetConst();
+        return value >= -0x800000 && value < 0x1000000;
+    }
+    
     const std::string Dump() const
     {
         std::string result;

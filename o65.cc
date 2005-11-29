@@ -245,7 +245,7 @@ void O65::Load(FILE* fp)
     }
     
     code->LoadRelocations(fp);
-    code->LoadRelocations(fp);
+    data->LoadRelocations(fp);
     // relocations don't exist for zero/bss in o65 format.
     
     unsigned num_global = LoadSWord(fp, use32);
@@ -734,6 +734,7 @@ void O65::Segment::LoadRelocations(FILE* fp)
             case BSS:  // bss  =4
             {
                 SegmentSelection seg = (SegmentSelection)area;
+                //fprintf(stderr, "Fixup into %u (%X) -- type=%02X\n", seg, addr, type);
                 switch(type)
                 {
                     case 0x20:
@@ -788,7 +789,7 @@ const vector<pair<unsigned char, std::string> >& O65::GetCustomHeaders() const
 }
 
 /* Get relocation data of the given segment */
-const Relocdata<unsigned> O65::GetRelocData(SegmentSelection seg)
+const Relocdata<unsigned> O65::GetRelocData(SegmentSelection seg) const
 {
     const Segment*const *s = GetSegRef(seg);
     if(!s) return Relocdata<unsigned> ();

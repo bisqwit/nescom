@@ -1,7 +1,7 @@
 #ifndef bqtReferHH
 #define bqtReferHH
 
-#include "rommap.hh"
+#include "romaddr.hh"
 
 // Far call takes four bytes:
 //     22 63 EA C0 = JSL $C0:$EA63
@@ -28,7 +28,7 @@ protected:
         or_mask(o), num_bytes(n), shr_by(s) { }
 public:
     unsigned Evaluate(unsigned value) const;
-    unsigned GetAddr() const { return ROM2SNESaddr(from_addr); }
+    unsigned GetAddr() const { return ROM2NESaddr(from_addr); }
     unsigned GetSize() const { return num_bytes; }
 };
 struct CallFrom: public ReferMethod
@@ -36,11 +36,6 @@ struct CallFrom: public ReferMethod
     // JSL to specific location.
     CallFrom(unsigned from): ReferMethod(0x00000022,4,-8, from) {}
     // Formula: (value << 8) | 0xC0000022, 4 bytes
-};
-struct LongPtrFrom: public ReferMethod
-{
-    LongPtrFrom(unsigned from): ReferMethod(0x000000,3,0, from) {}
-    // Formula: (value | 0xC00000), 3 bytes
 };
 struct OffsPtrFrom: public ReferMethod
 {

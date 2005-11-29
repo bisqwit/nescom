@@ -1,4 +1,4 @@
-/* nescom 6502 instruction database for nescom */
+/* snescom 65c816 instruction database for snescom and deasm */
 
 #include <string>
 
@@ -12,7 +12,7 @@ struct AddrMode
     char forbid;
     const char *prereq;
     const char *postreq;
-    enum { tNone, tByte, tWord, tRel8 } p1, p2;
+    enum { tNone, tByte, tWord, tLong, tA, tX, tRel8, tRel16 } p1, p2;
 };
 extern const struct AddrMode AddrModes[];
 extern const unsigned AddrModeCount;
