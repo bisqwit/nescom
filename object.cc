@@ -627,7 +627,12 @@ void Object::AddExtern(char prefix, const std::string& ref, long value)
 
 void Object::DefineLabel(const std::string& label)
 {
-    DefineLabel(label, GetSeg().GetPos());
+    DefineLabel(label, GetPos());
+}
+
+unsigned Object::GetPos() const
+{
+    return GetSeg().GetPos();
 }
 
 void Object::DefineLabel(const std::string& label, unsigned value)

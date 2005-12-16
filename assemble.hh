@@ -33,8 +33,8 @@ namespace
 extern bool A_16bit;
 extern bool X_16bit;
 
-extern std::string PrevBranchLabel; // What "-" means
-extern std::string NextBranchLabel; // What "+" means
+const std::string& GetPrevBranchLabel(unsigned length); // What "-" means for each length of "-"
+const std::string& GetNextBranchLabel(unsigned length); // What "+" means for each length of "+"
 
 void AssemblePrecompiled(std::FILE *fp, Object& obj);
 

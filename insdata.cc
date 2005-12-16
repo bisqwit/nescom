@@ -19,7 +19,8 @@ const struct AddrMode AddrModes[] =
   { /* 10 lda $1234,y  */ '(', "",   ",y", AddrMode::tWord, AddrMode::tNone },//o W,y  AY
   { /* 11 lda ($1234)  */   0, "(",  ")",  AddrMode::tWord, AddrMode::tNone },//o (W)  IN
   { /* 12 .link group 1  */ 0, "group", "",AddrMode::tWord, AddrMode::tNone },
-  { /* 13 .link page $FF */ 0, "page",  "",AddrMode::tByte, AddrMode::tNone }
+  { /* 13 .link page $FF */ 0, "page",  "",AddrMode::tByte, AddrMode::tNone },
+  { /* 14 .nop imm16  */    0, "",   "",   AddrMode::tWord, AddrMode::tNone }
 };
 const unsigned AddrModeCount = sizeof(AddrModes) / sizeof(AddrModes[0]);
 
@@ -33,6 +34,8 @@ const struct ins ins[] =
   { ".data", "gd" }, // Select seG DATA
   { ".link",         // Select linkage (modes 12 and 13)
            "--'--'--'--'--'--'--'--'--'--'--'--'li'li" },
+  { ".nop", 
+           "--'--'--'--'--'--'--'--'--'--'--'--'--'--'np" }, // A macro-length nop
   { ".text", "gt" }, // Select seG TEXT
   { ".zero", "gz" }, // Select seG ZERO
   

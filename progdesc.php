@@ -7,9 +7,10 @@ $progname = 'nescom';
 $text = array(
    'purpose:1. Purpose' => "
 
-This program reads symbolic 6502 machine code
-and compiles (assembles) it into a relocatable object file.
-<p>
+This program reads symbolic 6502/RP2A03/RP2A07 machine code
+and compiles (assembles) it into a relocatable object file
+or into an IPS patch.
+ <p>
 The produced object file is binary-compatible with those
 made with <a href=\"http://www.google.fi/search?q=xa65\">XA65</a>.
 
@@ -97,7 +98,7 @@ a continuous block.
 
 ", 'branchlabels:1.1. Branch labels' => "
 
-The label <code>-</code> can be defined for branches backward
+The label <code>-</code> can be defined for local branches backward
 and <code>+</code> for branches forward.
 
 ", 'cpp:1.1. Preprocessor' => "
@@ -156,6 +157,8 @@ to a symbol from those modules.
 ", 'changelog:1. Changelog' => "
 
 Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
+Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
+Dec 16 2005; 0.2.0 support for deeper \"++\" and \"--\" labels. Also support for <code>.nop</code> statement.<br>
 
 ", 'bugs:1. Known bugs' => "
 

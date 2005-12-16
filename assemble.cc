@@ -12,11 +12,11 @@
 #include "insdata.hh"
 #include "precompile.hh"
 
-bool A_16bit = true;
-bool X_16bit = true;
+bool A_16bit = false;
+bool X_16bit = false;
 
-std::string PrevBranchLabel; // What "-" means
-std::string NextBranchLabel; // What "+" means
+static std::map<unsigned, std::string> PrevBranchLabel; // What "-" means (for each length of "-")
+static std::map<unsigned, std::string> NextBranchLabel; // What "+" means (for each length of "+")
 
 #define SHOW_CHOICES   0
 #define SHOW_POSSIBLES 0
@@ -37,25 +37,30 @@ namespace
     
     std::list<std::string> DefinedBranchLabels;
     
-    void CreateNewPrevBranch()
+    void CreateNewPrevBranch(unsigned length)
     {
         static unsigned BranchNumber = 0;
         char Buf[128];
-        std::sprintf(Buf, "$PrevBranch$%u", ++BranchNumber);
+        std::sprintf(Buf, "$PrevBranch%u$%u", length,++BranchNumber);
         
-        PrevBranchLabel = Buf;
-        
-        DefinedBranchLabels.push_back(PrevBranchLabel);
+        DefinedBranchLabels.push_back(PrevBranchLabel[length] = Buf);
     }
-    void CreateNewNextBranch()
+    void CreateNewNextBranch(unsigned length)
     {
         static unsigned BranchNumber = 0;
         char Buf[128];
-        std::sprintf(Buf, "$NextBranch$%u", ++BranchNumber);
+        std::sprintf(Buf, "$NextBranch%u$%u", length,++BranchNumber);
         
-        NextBranchLabel = Buf;
+        DefinedBranchLabels.push_back(NextBranchLabel[length] = Buf);
+    }
+    const std::string CreateNopLabel()
+    {
+        static unsigned BranchNumber = 0;
+        char Buf[128];
+        std::sprintf(Buf, "$NopLabel$%u", ++BranchNumber);
         
-        DefinedBranchLabels.push_back(NextBranchLabel);
+        DefinedBranchLabels.push_back(Buf);
+        return Buf;
     }
     
     unsigned ParseConst(ins_parameter& p, const Object& obj)
@@ -111,11 +116,16 @@ namespace
 
         if(data.PeekC() == '+')
         {
-            tok += data.GetC(); // defines global
+            do {
+                tok += data.GetC(); // defines global
+            } while(data.PeekC() == '+');
+            goto GotLabel;
         }
         else if(data.PeekC() == '-')
         {
-            tok += data.GetC();
+            do {
+                tok += data.GetC();
+            } while(data.PeekC() == '-');
             goto GotLabel;
         }
         else
@@ -149,16 +159,18 @@ namespace
 
 GotLabel:
         data.SkipSpace();
-        if(tok == "+") // It's a next-branch-label
+        if(!tok.empty() && tok[0] == '+') // It's a next-branch-label
         {
-            result.DefineLabel(NextBranchLabel);
-            CreateNewNextBranch();
+            unsigned length = tok.size();
+            result.DefineLabel(NextBranchLabel[length]);
+            CreateNewNextBranch(length);
             goto MoreLabels;
         }
-        if(tok == "-") // It's a prev-branch-label
+        if(!tok.empty() && tok[0] == '-') // It's a prev-branch-label
         {
-            CreateNewPrevBranch();
-            result.DefineLabel(PrevBranchLabel);
+            unsigned length = tok.size();
+            CreateNewPrevBranch(length);
+            result.DefineLabel(PrevBranchLabel[length]);
             goto MoreLabels;
         }
         
@@ -361,10 +373,6 @@ GotLabel:
                         
                         if(op == "sb") result.StartScope();
                         else if(op == "eb") result.EndScope();
-                        else if(op == "as") A_16bit = false;
-                        else if(op == "al") A_16bit = true;
-                        else if(op == "xs") X_16bit = false;
-                        else if(op == "xl") X_16bit = true;
                         else if(op == "gt") result.SelectTEXT();
                         else if(op == "gd") result.SelectDATA();
                         else if(op == "gz") result.SelectZERO();
@@ -373,16 +381,54 @@ GotLabel:
                         {
                             switch(addrmode)
                             {
-                                case 26: // .link group 1
+                                case 12: // .link group 1
                                 {
                                     result.Linkage.SetLinkageGroup(ParseConst(p1, result));
                                     //delete p1.exp;
                                     break;
                                 }
-                                case 27: // .link page $FF
+                                case 13: // .link page $FF
                                 {
                                     result.Linkage.SetLinkagePage(ParseConst(p1, result));
                                     //delete p1.exp;
+                                    break;
+                                }
+                                default:
+                                    // shouldn't happen
+                                    break;
+                            }
+                        }
+                        else if(op == "np")
+                        {
+                            switch(addrmode)
+                            {
+                                case 14: // word imm
+                                {
+                                    unsigned imm16 = ParseConst(p1, result);
+                                    
+                                    OpcodeChoice choice;
+                                    
+                                    if(imm16 > 3)
+                                    {
+                                        std::string NopLabel = CreateNopLabel();
+                                        result.DefineLabel(NopLabel, result.GetPos()+imm16);
+                                        
+                                        // jmp
+                                        choice.parameters.push_back(std::make_pair(1, 0x4C));
+                                        
+                                        p1.prefix = FORCE_ABSWORD;
+                                        p1.exp    = new expr_label(NopLabel);
+                                        choice.parameters.push_back(std::make_pair(2, p1));
+                                        
+                                        imm16 -= 3;
+                                    }
+                                    
+                                    // Fill the rest with nops
+                                    for(unsigned n=0; n<imm16; ++n)
+                                        choice.parameters.push_back(std::make_pair(1, 0xEA));
+                                    
+                                    choice.is_certain = valid.is_true();
+                                    choices.push_back(choice);
                                     break;
                                 }
                                 default:
@@ -399,10 +445,8 @@ GotLabel:
                             unsigned op1size = GetOperand1Size(addrmode);
                             unsigned op2size = GetOperand2Size(addrmode);
                             
-                            if(AddrModes[addrmode].p1 == AddrMode::tRel8)
-                                p1.prefix = FORCE_REL8;
-                            if(AddrModes[addrmode].p1 == AddrMode::tRel16)
-                                p1.prefix = FORCE_REL16;
+                            if(AddrModes[addrmode].p1 == AddrMode::tRel8)  p1.prefix = FORCE_REL8;
+                            if(AddrModes[addrmode].p1 == AddrMode::tRel16) p1.prefix = FORCE_REL16;
                             
                             choice.parameters.push_back(std::make_pair(1, opcode));
                             if(op1size)choice.parameters.push_back(std::make_pair(op1size, p1));
@@ -656,6 +700,20 @@ GotLabel:
     }
 }
 
+const std::string& GetPrevBranchLabel(unsigned length)
+{
+    std::string& l = PrevBranchLabel[length];
+    if(l.empty()) CreateNewPrevBranch(length);
+    return l;
+}
+
+const std::string& GetNextBranchLabel(unsigned length)
+{
+    std::string& l = NextBranchLabel[length];
+    if(l.empty()) CreateNewNextBranch(length);
+    return l;
+}
+
 void AssemblePrecompiled(std::FILE *fp, Object& obj)
 {
     if(!fp)
@@ -663,9 +721,6 @@ void AssemblePrecompiled(std::FILE *fp, Object& obj)
         return;
     }
     
-    CreateNewPrevBranch();
-    CreateNewNextBranch();
-
     obj.StartScope();
     obj.SelectTEXT();
     

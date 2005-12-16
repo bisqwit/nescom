@@ -26,6 +26,7 @@ public:
     void UndefineLabel(const std::string& label);
 
     void SetPos(unsigned newpos);
+    unsigned GetPos() const;
     
     void SelectTEXT() { CurSegment = CODE; }
     void SelectDATA() { CurSegment = DATA; }

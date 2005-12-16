@@ -83,7 +83,8 @@ namespace
         return new sum_group(left, right, true);
     }
 
-    expression* RealParseExpression(ParseData& data, int prio=0)
+    expression* RealParseExpression(ParseData& data, int prio=0,
+                                    char disallow_local_label=0)
     {
         std::string s = ParseToken(data);
         
@@ -92,12 +93,23 @@ namespace
         if(s.empty()) /* If no number or symbol */
         {
             char c = data.PeekC();
-            if(c == '+')
+            
+            char local_label = 0;
+            unsigned local_length = 0;
+            
+            /* disallow_local_label is used to prevent --
+               from being parsed as -($PrevLabel$)
+             */
+            
+            if((c == '+' || c == '-') && c != disallow_local_label)
             {
-                data.GetC();
-                left = new expr_label(NextBranchLabel);
+                ParseData::StateType state = data.SaveState();
+                local_label = c;
+                do { ++local_length; data.GetC(); } while(data.PeekC() == c);
+                data.LoadState(state);
             }
-            else if(c == '-') // negation
+            
+            if(c == '-') // negation
             {
                 ParseData::StateType state = data.SaveState();
                 data.GetC(); // eat
@@ -105,7 +117,7 @@ namespace
                 const std::string RestBefore = data.GetRest();
                 if(data.PeekC() != '+')
                 {
-                    left = RealParseExpression(data, prio_negate);
+                    left = RealParseExpression(data, prio_negate, c);
                 }
                 if(!left)
                 {
@@ -119,8 +131,7 @@ namespace
                     }
                     
                     // If it ate *nothing*, we've got PrevBranchLabel here.
-                    data.GetC(); // eat the '-' again
-                    left = new expr_label(PrevBranchLabel);
+                    goto GotLocalLabel;
                 }
                 else
                 {
@@ -147,7 +158,19 @@ namespace
             }
             else
             {
-                // invalid char
+            GotLocalLabel:
+                switch(local_label)
+                {
+                    case '-':
+                        left = new expr_label(GetPrevBranchLabel(local_length));
+                        for(unsigned a=0; a<local_length; ++a) data.GetC();
+                        break;
+                    case '+':
+                        left = new expr_label(GetNextBranchLabel(local_length));
+                        for(unsigned a=0; a<local_length; ++a) data.GetC();
+                        break;
+                }
+                // default
                 return left;
             }
         }
