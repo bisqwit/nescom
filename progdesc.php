@@ -46,7 +46,68 @@ The following mnemonics are supported:
 
 All the standard addressing modes of the 6502 cpu are supported.
 <p>
-<em>To be detailed later.</em>
+Syntax:
+
+<table border=\"1\">
+ <tr>
+  <th>Name</th>
+  <th>Examples</th>
+  <th>Functionally equivalent to (not nescom syntax, provided for illustration only)</th>
+ </tr>
+ <tr>
+  <td>Implied:</td>
+   <td> <code>nop</code>; <code>clc</code> </td>
+ </tr>
+ <tr>
+  <td>Immediate:</td>
+   <td> <code>lda #value</code> etc </td>
+   <td> <code>a = value</code> </td>
+ </tr>
+ <tr>
+  <td>Short relative:</td>
+   <td> <code>bra end</code></td>
+ </tr>
+ <tr>
+  <td>Direct:</td>
+   <td> <code>lda \$12</code></td>
+   <td> <code>a = ram[\$0012]</code> </td>
+ </tr>
+ <tr>
+  <td>Direct indexed:</td>
+   <td> <code>lda \$12,x</code><br><code>lda \$12,y</code> </td>
+   <td> <code>a = ram[\$0012 + x]</code><br><code>a = ram[\$0012 + y]</code> </td>
+ </tr>
+ <tr>
+  <td>Direct indexed indirect:</td>
+   <td> <code>lda (\$12,x)</code> </td>
+   <td> <code>a = ram[ramw[\$0012 + x]]</code> </td>
+ </tr>
+ <tr>
+  <td>Direct indirect indexed:</td>
+   <td> <code>lda (\$12),y</code> </td>
+   <td> <code>a = ram[ramw[\$0012] + y]</code> </td>
+ </tr>
+ <tr>
+  <td>Absolute:</td>
+   <td> <code>lda \$1234</code> </td>
+   <td> <code>a = ram[\$1234]</code> </td>
+ </tr>
+ <tr>
+  <td>Absolute indexed:</td>
+   <td> <code>lda \$1234,x</code><br><code>lda \$1234,y</code> </td>
+   <td> <code>a = ram[\$1234 + x]</code><br><code>a = ram[\$1234 + y]</code> </td>
+ </tr>
+ <tr>
+  <td>Absolute indirect:</td>
+   <td> <code>lda (\$1234)</code> </td>
+   <td> <code>a = ram[ramw[\$1234]]</code> </td>
+ </tr>
+</table>
+Note: \"ram\" and \"ramw\" in the table refer to generic
+address space access (RAM, I/O ports, ROM etc).
+\"ramw\" means 16-bit read access,
+but the meaning of \"ram\" depends on the context.
+It can be a read, write or a jump target, depending on instruction.
 
 ", 'opsize:1.1. Operand size control' => "
 
@@ -159,6 +220,7 @@ to a symbol from those modules.
 Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
 Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
 Dec 16 2005; 0.2.0 support for deeper \"++\" and \"--\" labels. Also support for <code>.nop</code> statement.<br>
+Jun 20 2006; 1.0.0 raw output file format support in nescom. Also using boost::smart_ptr.
 
 ", 'bugs:1. Known bugs' => "
 
@@ -177,6 +239,12 @@ and is distributed under the terms of the
 If you happen to see this program useful for you, I'd
 appreciate if you tell me :) Perhaps it would motivate
 me to enhance the program.
+
+", 'requirements:1. Requirements' => "
+
+nescom uses <a href=\"http://gcc.gnu.org/\">GCC</a> as a slave in
+the preprocessing phase. Therefore, gcc must be installed and found
+in the PATH when running nescom.
 
 ");
 include '/WWW/progdesc.php';

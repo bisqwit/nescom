@@ -39,6 +39,7 @@ public:
     
     void WriteO65(std::FILE* fp);
     void WriteIPS(std::FILE* fp);
+    void WriteRAW(std::FILE* fp);
     
     bool FindLabel(const std::string& s) const;
 

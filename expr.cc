@@ -32,8 +32,8 @@ void expr_negate::Optimize(expression*& self_ptr)
         
         sub = NULL;
         delete this;
+        return;
     }
-    if(self_ptr != this) return;
     if(expr_negate* tmp = dynamic_cast<expr_negate*> (sub))
     {
         self_ptr = tmp->sub;
@@ -42,14 +42,14 @@ void expr_negate::Optimize(expression*& self_ptr)
     }
 }
 
-void SubstituteExprLabel(expression*& e, const std::string& name, long value)
+void SubstituteExprLabel(expression*& e, const std::string& name, long value, bool del_old)
 {
     if(expr_label* l = dynamic_cast<expr_label*> (e))
     {
         if(l->GetName() == name)
         {
             e = new expr_number(value);
-            delete l;
+            if(del_old) delete l;
         }
     }
     else if(expr_unary* u = dynamic_cast<expr_unary*> (e))

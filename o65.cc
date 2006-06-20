@@ -115,10 +115,10 @@ class O65::Segment
 public:
     vector<unsigned char> space;
 
-    // where it is assumed to start
+    //! where it is assumed to start
     unsigned base;
     
-    // absolute addresses of all publics
+    //! absolute addresses of all publics
     typedef map<std::string, unsigned> publicmap_t;
     publicmap_t publics;
 

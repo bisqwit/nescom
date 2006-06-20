@@ -48,6 +48,9 @@ enum SegmentSelection
 
 #include "relocdata.hh"
 
+/**
+ * O65 object class.
+ */
 class O65
 {
 public:
@@ -58,46 +61,46 @@ public:
     O65(const O65 &);
     const O65& operator= (const O65 &);
     
-    /* Loads an object file from the specified file */
+    /*! Loads an object file from the specified file */
     void Load(FILE *fp);
     
-    /* Relocate the given segment to new address */
+    /*! Relocate the given segment to new address */
     void Locate(SegmentSelection seg, unsigned newaddress);
     
-    /* Returns the base address of the given segment */
+    /*! Returns the base address of the given segment */
     unsigned GetBase(SegmentSelection seg) const;
     
-    /* Defines the value of a symbol. */
-    /* The symbol must have been accessed in order to be defined. */
+    /*! Defines the value of a symbol. */
+    /*! The symbol must have been accessed in order to be defined. */
     void LinkSym(const std::string& name, unsigned value);
     
-    /* Declares a global label in the selected segment */
+    /*! Declares a global label in the selected segment */
     void DeclareGlobal(SegmentSelection seg, const std::string& name, unsigned address);
     
-    /* Declares a 8-bit relocation to given symbol */
+    /*! Declares a 8-bit relocation to given symbol */
     void DeclareByteRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
-    /* Declares a 16-bit relocation to given symbol */
+    /*! Declares a 16-bit relocation to given symbol */
     void DeclareWordRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
-    /* Declares a 24-bit relocation to given symbol */
+    /*! Declares a 24-bit relocation to given symbol */
     void DeclareLongRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
     
-    /* Returns the contents of a segment */
+    /*! Returns the contents of a segment */
     const vector<unsigned char>& GetSeg(SegmentSelection seg) const;
     const vector<pair<unsigned char, std::string> >& GetCustomHeaders() const;
     
-    /* Returns the segment size */
+    /*! Returns the segment size */
     unsigned GetSegSize(SegmentSelection seg) const;
     
-    /* Returns the address of a global */
+    /*! Returns the address of a global */
     unsigned GetSymAddress(SegmentSelection seg, const std::string& name) const;
     
-    /* Resizes a segment */
+    /*! Resizes a segment */
     void Resize(SegmentSelection seg, unsigned newsize);
     
-    /* Write to segment. Warning: no range checks */
+    /*! Write to segment. Warning: no range checks */
     void Write(SegmentSelection seg, unsigned addr, unsigned char value);
     
-    /* Redefine a segment. Warning: Does not change symbols. */
+    /*! Redefine a segment. Warning: Does not change symbols. */
     void LoadSegFrom(SegmentSelection seg, const vector<unsigned char>& buf);
     
     bool HasSym(SegmentSelection seg, const std::string& name) const;
@@ -105,16 +108,16 @@ public:
     const vector<std::string> GetSymbolList(SegmentSelection seg) const;
     const vector<std::string> GetExternList() const;
     
-    /* Verifies that all symbols have been properly defined */
+    /*! Verifies that all symbols have been properly defined */
     void Verify() const;
     
-    /* Has an error been found? */
+    /*! Has an error been found? */
     bool Error() const;
     
-    /* Set error flag */
+    /*! Set error flag */
     void SetError();
     
-    /* Get relocation data of the given segment */
+    /*! Get relocation data of the given segment */
     const Relocdata<unsigned> GetRelocData(SegmentSelection seg) const;
 
 private:

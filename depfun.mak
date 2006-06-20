@@ -56,7 +56,7 @@ depend dep: .depend
 -include .depend
 
 
-archpak: ${ARCHFILES}
+archpak: ${ARCHFILES} ;
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
 	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/ 2>&1 >/dev/null | while read line;do cp --parents -fr "`echo "$$line"|sed 's/.*${ARCHNAME}\///;s/'\''.*//'`" ${ARCHNAME}/; done
@@ -79,7 +79,7 @@ archpak: ${ARCHFILES}
 	rm -f ${ARCHDIR}${ARCHNAME}.tar
 
 # Makes the packages of various types...
-pak: archpak
+pak: archpak ;
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR} 1; fi
 
 # This is Bisqwit's method to install the packages to web-server...

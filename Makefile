@@ -1,18 +1,13 @@
 include Makefile.sets
 
 # Building for Windows (opt/xmingw is for Gentoo):
-#HOST=/usr/local/mingw32/bin/i586-mingw32msvc-
 #HOST=/opt/xmingw/bin/i386-mingw32msvc-
-#CFLAGS += -Iwinlibs
-#CPPFLAGS += -Iwinlibs
-#CXXFLAGS += -Iwinlibs
-##LDOPTS = -L/usr/local/mingw32/lib
 #LDOPTS += -L/opt/xmingw/lib
-#LDFLAGS += -Lwinlibs -liconv
+#CPPFLAGS += -I.
 
 # Building for native:
-#HOST=
-#LDFLAGS += -pthread 
+HOST=
+LDFLAGS += -pthread 
 
 CXX=$(HOST)g++
 CC=$(HOST)gcc
@@ -24,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=0.2.0
+VERSION=1.0.0
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -80,6 +75,25 @@ distclean: clean
 	rm -f *~ .depend
 realclean: distclean
 
+
+# Build a windows archive
+fullzip: \
+		nescom disasm \
+		README.html \
+		README.TXT
+	@rm -rf $(ARCHNAME)
+	- mkdir $(ARCHNAME){,/doc}
+	for s in $^;do ln "$$s" $(ARCHNAME)/"$$s"; done
+	for dir in . doc ; do (\
+	 cd $(ARCHNAME)/$$dir; \
+	 /bin/ls|while read s;do echo "$$s"|grep -qF . || test -d "$$s" || mv -v "$$s" "$$s".exe;done; \
+	                           ); done
+	$(HOST)strip $(ARCHNAME)/*.exe $(ARCHNAME)/*/*.exe
+	- upx --overlay=strip -9 $(ARCHNAME)/*.exe $(ARCHNAME)/*/*.exe
+	zip -r9 $(ARCHNAME)-win32.zip $(ARCHNAME)
+	rm -rf $(ARCHNAME)
+	mv -f $(ARCHNAME)-win32.zip archives/
+	- ln -f archives/$(ARCHNAME)-win32.zip /WWW/src/arch/
 
 #../assemble: FORCE
 #	$(MAKE) -C ../.. utils/assemble

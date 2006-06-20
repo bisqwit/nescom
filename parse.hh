@@ -7,6 +7,8 @@
 #include "assemble.hh"
 #include "tristate"
 
+#include <boost/shared_ptr.hpp>
+
 #undef EOF
 
 struct ParseData
@@ -34,9 +36,9 @@ public:
 struct ins_parameter
 {
     char prefix;
-    expression *exp;
+    boost::shared_ptr<expression> exp;
     
-    ins_parameter(): prefix(0), exp(NULL)
+    ins_parameter(): prefix(0), exp(/*NULL*/)
     {
     }
     
@@ -87,14 +89,6 @@ struct ins_parameter
 public:
     ins_parameter(const ins_parameter& p) : prefix(p.prefix), exp(p.exp)
     {
-        /* Note: no autoptr is used here */
-    }
-    const ins_parameter& operator= (const ins_parameter& p)
-    {
-        prefix = p.prefix;
-        exp = p.exp;
-        /* Note: no autoptr is used here */
-        return *this;
     }
 };
 

@@ -83,7 +83,7 @@ static int HandleIPS()
                              | (Buf2[name.size()+2] << 8)
                              | (Buf2[name.size()+3] << 16);
                 
-                addr = ROM2NESaddr(addr);
+                //addr = ROM2NESaddr(addr);
                 
                 printf(".global %s\t;$%06X\n", name.c_str(), addr);
                 
@@ -110,7 +110,7 @@ static int HandleIPS()
                 else
                     var_id = i->second;
                 
-                addr = ROM2NESaddr(addr);
+                //addr = ROM2NESaddr(addr);
                 
                 switch(size)
                 {
@@ -220,7 +220,7 @@ int main(int argc, const char *const *argv)
         
         code.insert(code.end(), Buf, Buf+c);
     }
-    unsigned origin = 0;
+    unsigned origin = 0x0000;
     
     printf("Code:\n");
     DisAsm(origin, &code[0], code.size());
@@ -232,6 +232,14 @@ struct addrmode
     const char* format;
     const char* params;
 };
+
+
+static unsigned FixCodeAddr(unsigned a)
+{
+    if(a/0x4000 == 15) a = 0xC000 + (a&0x3FFF);
+    else a = (a/0x4000)*0x10000 + (a&0x3FFF) + 0x8000;
+    return a;
+}
 
 static std::string FindFixupAnchor(unsigned address, bool use_negative=true)
 {
@@ -291,7 +299,7 @@ End:
     return format("@$%06X", param)+fix;
 }
 
-static std::string DumpInt2(unsigned address, const unsigned char* data)
+static std::string DumpInt2(unsigned address, const unsigned char* data, bool is_code=false)
 {
     unsigned param = (data[1] << 8) | data[0];
     
@@ -318,6 +326,7 @@ static std::string DumpInt2(unsigned address, const unsigned char* data)
             { fix=FindFixupAnchor(param); goto End; }
     }
 End:
+    if(is_code) return format("$%04X", FixCodeAddr(param))+fix;
     return format("$%04X", param)+fix;
 }
 static std::string DumpInt1(unsigned address, const unsigned char* data)
@@ -410,28 +419,35 @@ static unsigned DumpIns(const unsigned address,
             case 'r':
                 { signed char n=data[size];
                   std::string fix = FindFixupAnchor(address+n+2, false);
-                  Buf += format("$%06X", address+n+2) + fix;
+                  Buf += format("$%06X", FixCodeAddr(address+n+2)) + fix;
                   size+=1;
                   break;
                 }
             case 'R':
                 { signed short n=data[size]+data[size+1]*256;
                   std::string fix = FindFixupAnchor(address+n+3, false);
-                  Buf += format("$%06X", address+n+3) + fix;
+                  Buf += format("$%06X", FixCodeAddr(address+n+3)) + fix;
                   size+=2;
                   break;
                 }
             case '3': Buf += DumpInt3(address+size, data+size); size += 3; break;
-            case '2': Buf += DumpInt2(address+size, data+size); size += 2; break;
+            case '2':
+            {
+                bool is_code = op == "jmp" || op == "jsr"
+                           || op == "bcc" || op == "bcs"
+                           || op == "beq" || op == "bpl"
+                           || op == "bvc" || op == "bvs"
+                           || op ==" bmi" || op == "bne";
+                Buf += DumpInt2(address+size, data+size, is_code);
+                size += 2;
+                break;
+            }
             case '1': Buf += DumpInt1(address+size, data+size); size += 1; break;
         }
         if(*p) Buf += ", ";
     }
     
-    unsigned a = address;
-
-    if(IPSmode) a = ROM2NESaddr(a);
-    printf(" %06X\t", a);
+    printf(" %06X\t", FixCodeAddr(address));
     
     for(unsigned n=0; n<4; ++n)
         printf(n<size?"%02X ":"   ", data[n]);
@@ -605,6 +621,12 @@ static void DisAsm(unsigned origin, const unsigned char *data,
             goto DoRaw;
         }
         if(mode >= 12) { goto onebyte; }
+        
+        if(data[0] == 0xA9 && data[1] == 0x3A
+        && data[2] == 0x20 && data[3] == 0x51 && data[4] == 0xC0)
+        {
+            printf("MARK\n");
+        }
         
         /* If the instruction is too big for this position, create
          * a pseudo-instruction instead.

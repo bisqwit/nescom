@@ -510,7 +510,7 @@ void Object::Segment::CloseSegment()
                 if(diff < -0x80+threshold || diff >= 0x80-threshold)
                 {
                     std::fprintf(stderr,
-                        "Error: Short jump out of range (%ld)\n", diff);
+                        "Error: Short jump out of range (%ld) at $%X\n", diff, address);
                 }
                 
                 SetByte(address, diff & 0xFF);
@@ -524,7 +524,7 @@ void Object::Segment::CloseSegment()
                 if(diff < -0x8000 || diff >= 0x8000)
                 {
                     std::fprintf(stderr,
-                        "Error: Near jump out of range (%ld)\n", diff);
+                        "Error: Near jump out of range (%ld) at $%X\n", diff, address);
                 }
                 
                 SetByte(address,   diff & 0xFF);
@@ -1088,6 +1088,45 @@ namespace
             }
         }
     }
+
+    void RAWwriteSeg(const Object::Segment& seg, std::FILE* fp)
+    {
+        if(!seg.R.R16.Relocs.empty())
+        {
+            fprintf(stderr, "Error: 16-bit externs aren't supported in RAW format.\n");
+        }
+        if(!seg.R.R16lo.Relocs.empty())
+        {
+            fprintf(stderr, "Error: Lo-byte-type externs aren't supported in RAW format.\n");
+        }
+        if(!seg.R.R16hi.Relocs.empty())
+        {
+            fprintf(stderr, "Error: Hi-byte-type externs aren't supported in RAW format.\n");
+        }
+        if(!seg.R.R24.Relocs.empty())
+        {
+            fprintf(stderr, "Error: 24-bit externs aren't supported in RAW format.\n");
+        }
+        if(!seg.R.R24seg.Relocs.empty())
+        {
+            fprintf(stderr, "Error: Segment-type externs aren't supported in RAW format.\n");
+        }
+        
+        if(!seg.GetLabels().empty())
+        {
+            fprintf(stderr, "Warning: Labels are not written into a RAW file.\n");
+        }
+        
+        if(seg.GetBase() > 0)
+        {
+            fprintf(stderr,
+                "Warning: RAW file has no 'origin', but we're writing a segment that is supposed to have origin of $%X.\n",
+                seg.GetBase());
+        }
+
+        std::vector<unsigned char> data = seg.GetContent();
+        PutS(&data[0], data.size(), fp);
+    }
 };
 
 void Object::WriteO65(std::FILE* fp)
@@ -1193,6 +1232,19 @@ void Object::WriteIPS(std::FILE* fp)
     IPSwriteSeg(*zero, fp);
     
     PutS("EOF", 3, fp);
+}
+
+void Object::WriteRAW(std::FILE* fp)
+{
+    if(Linkage.type != LinkageWish::LinkAnywhere)
+    {
+        fprintf(stderr, "Warning: RAW file is never relocated - .link statement ignored.\n");
+    }
+    
+    RAWwriteSeg(*code, fp);
+    RAWwriteSeg(*data, fp);
+    RAWwriteSeg(*bss,  fp);
+    RAWwriteSeg(*zero, fp);
 }
 
 void Object::Dump()

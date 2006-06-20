@@ -68,7 +68,7 @@ namespace
         unsigned value = 0;
         
         std::set<std::string> labels;
-        FindExprUsedLabels(p.exp, labels);
+        FindExprUsedLabels(p.exp.get(), labels);
         
         for(std::set<std::string>::const_iterator
             i = labels.begin(); i != labels.end(); ++i)
@@ -79,7 +79,10 @@ namespace
 
             if(obj.FindLabel(label, seg, value))
             {
-                SubstituteExprLabel(p.exp, label, value);
+                expression* e = p.exp.get();
+                SubstituteExprLabel(e, label, value, false);
+                boost::shared_ptr<expression> tmp(e);
+                p.exp.swap(tmp);
             }
             else
             {
@@ -321,7 +324,7 @@ GotLabel:
                     
                     unsigned value = ParseConst(p, result);
                     
-                    delete p.exp;
+                    p.exp.reset();
                     
                     if(tok == "*")
                     {
@@ -384,13 +387,13 @@ GotLabel:
                                 case 12: // .link group 1
                                 {
                                     result.Linkage.SetLinkageGroup(ParseConst(p1, result));
-                                    //delete p1.exp;
+                                    p1.exp.reset();
                                     break;
                                 }
                                 case 13: // .link page $FF
                                 {
                                     result.Linkage.SetLinkagePage(ParseConst(p1, result));
-                                    //delete p1.exp;
+                                    p1.exp.reset();
                                     break;
                                 }
                                 default:
@@ -406,6 +409,8 @@ GotLabel:
                                 {
                                     unsigned imm16 = ParseConst(p1, result);
                                     
+                                    //fprintf(stderr, "np %d\n", (short)imm16);
+                                    
                                     OpcodeChoice choice;
                                     
                                     if(imm16 > 3)
@@ -416,8 +421,11 @@ GotLabel:
                                         // jmp
                                         choice.parameters.push_back(std::make_pair(1, 0x4C));
                                         
+                                        expression* e = new expr_label(NopLabel);
+                                        boost::shared_ptr<expression> tmp(e);
+                                        
                                         p1.prefix = FORCE_ABSWORD;
-                                        p1.exp    = new expr_label(NopLabel);
+                                        p1.exp.swap(tmp);
                                         choice.parameters.push_back(std::make_pair(2, p1));
                                         
                                         imm16 -= 3;
@@ -549,7 +557,7 @@ GotLabel:
             unsigned size = c.parameters[b].first;
             const ins_parameter& param = c.parameters[b].second;
             
-            const expression* e = param.exp;
+            const expression* e = param.exp.get();
             
             if(e->IsConst())
             {
@@ -565,7 +573,7 @@ GotLabel:
                 
                 /* sum_group always has at least 2 elements.
                  * If it has 0, it's converted to expr_number.
-                 * if it has 1, it's converter into the element itself (or expr_negate).
+                 * if it has 1, it's converted into the element itself (or expr_negate).
                  */
                 
                 sum_group::list_t::const_iterator first = s->contents.begin();

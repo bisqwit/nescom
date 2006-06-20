@@ -143,9 +143,13 @@ public:
 private:
     friend class expr_negate;
     void Negate();
+    
+private:
+    sum_group(const sum_group &b);
+    void operator= (const sum_group &b);
 };
 
-void SubstituteExprLabel(expression*&, const std::string& name, long value);
+void SubstituteExprLabel(expression*&, const std::string& name, long value, bool del_old=true);
 void FindExprUsedLabels(const expression*, std::set<std::string>& labels);
 
 #endif

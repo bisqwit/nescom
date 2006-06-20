@@ -364,7 +364,7 @@ while(($fn = readdir($fp)))
   if(ereg('^patch-.*-[0-9].*-[0-9].*\...*', $fn))
   {
     preg_match(
-      '/^patch-(.*)-([0-9][0-9.a-z-]*)-([0-9][0-9.a-z-]*)\.([a-z0-9]+)$/', $fn, $tab);
+      '/^patch-(.*(?:-opt)?)-([0-9][0-9.a-z-]*)-([0-9][0-9.a-z-]*)\.([a-z0-9]+)$/', $fn, $tab);
     // tab[0] = fn
     // tab[1] = progname
     // tab[2] = old version
@@ -382,7 +382,7 @@ while(($fn = readdir($fp)))
   }
   else
   {
-    preg_match('/(.*)-([0-9][0-9.a-z-]*)\.(tar\.[a-z0-9]+|zip|rar)$/', $fn, $tab);
+    preg_match('/(.*(?:-opt)?)-((?!-opt)[0-9][0-9.a-z-]*)\.(tar\.[a-z0-9]+|zip|rar)$/', $fn, $tab);
     // tab[0] = fn
     // tab[1] = progname
     // tab[2] = version
@@ -405,7 +405,7 @@ while(($fn = readdir($fp)))
 }
 closedir($fp);
 
-$argv[1] = ereg_replace('^[^-]*-([0-9])', '\1', $argv[1]);
+$argv[1] = preg_replace('@^[^-]*(?:-opt)?-([0-9])@', '\1', $argv[1]);
 $wantversion = strlen($argv[1]) ? calcversion($argv[1]) : '';
 
 foreach($progs as $progname => $data)

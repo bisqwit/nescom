@@ -297,8 +297,10 @@ bool ParseExpression(ParseData& data, ins_parameter& result)
 
     //std::fprintf(stderr, "ParseExpression returned: '%s'\n", result.Dump().c_str());
     
+    boost::shared_ptr<expression> tmp(e);
+    
     result.prefix = prefix;
-    result.exp    = e;
+    result.exp.swap(tmp);
     
     return e != NULL;
 }

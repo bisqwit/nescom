@@ -8,20 +8,26 @@
 
 #include <getopt.h>
 
-bool already_reprocessed = false;
+bool already_reprocessed = true; // affects jump length counting
 
 namespace
 {
     enum OutputFormat
     {
         IPSformat,
-        O65format
+        O65format,
+        RAWformat
     } format = O65format;
 
     void SetOutputFormat(const std::string& s)
     {
         if(s == "ips") format = IPSformat;
-        if(s == "o65") format = O65format;
+        else if(s == "o65") format = O65format;
+        else if(s == "raw") format = RAWformat;
+        else
+        {
+            std::fprintf(stderr, "Error: Unknown output format `%s'\n", s.c_str());
+        }
     }
 }
 
@@ -56,7 +62,7 @@ int main(int argc, char**argv)
             case 'V': //version
                 printf(
                     "%s %s\n"
-                    "Copyright (C) 1992,2005 Bisqwit (http://iki.fi/bisqwit/)\n"
+                    "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "This is free software; see the source for copying conditions. There is NO\n"
                     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n",
                     argv[0], VERSION
@@ -97,7 +103,7 @@ int main(int argc, char**argv)
             case 'h':
                 std::printf(
                     "6502 assembler\n"
-                    "Copyright (C) 1992,2005 Bisqwit (http://iki.fi/bisqwit/)\n"
+                    "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "\nUsage: %s [<option> [<...>]] <file> [<...>]\n"
                     "\nAssembles 6502 code.\n"
                     "\nOptions:\n"
@@ -108,7 +114,8 @@ int main(int argc, char**argv)
                     " -c                    Ignored for gcc-compatibility\n"
                     " --version             Displays version information\n"
                     " --submethod <method>  Select subprocess method: temp,thread,pipe\n"
-                    " --outformat <format>  Select output format: ips,o65\n"
+                    " -f, --outformat <fmt> Select output format: ips,raw,o65 (default: o65)\n"
+                    "                         -I is short for -fips\n"
                     " -W <type>             Enable warnings\n"
                     "\nNo warranty whatsoever.\n",
                     argv[0]);
@@ -132,6 +139,11 @@ int main(int argc, char**argv)
                         goto ErrorExit;
                     }
                 }
+                break;
+            }
+            case 'f':
+            {
+                SetOutputFormat(optarg);
                 break;
             }
             case 'W':
@@ -215,6 +227,9 @@ Reprocess:
                 break;
             case O65format:
                 obj.WriteO65(stream);
+                break;
+            case RAWformat:
+                obj.WriteRAW(stream);
                 break;
         }
         obj.Dump();
