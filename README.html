@@ -25,7 +25,7 @@ SMALL    {font-size:70%}
   
   This is the documentation of nescom-1.0.0.
 <div class=toc><table cellspacing=0 cellpadding=0 class=toc><tr><td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;1. <a href="#purpose">Purpose</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1. <a href="#history">History</a><br>&nbsp;&nbsp;&nbsp;2. <a href="#syntax">Supported syntax</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.1. <a href="#ops">Mnemonics</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.2. <a href="#addrmodes">Addressing modes</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.3. <a href="#opsize">Operand size control</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.4. <a href="#eval">Expression evaluation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.5. <a href="#segs">Segments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.6. <a href="#comments">Comments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.7. <a href="#separation">Command separation</a><br></td>
-<td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.8. <a href="#reloc">Code pointer relocation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.9. <a href="#branchlabels">Branch labels</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.10. <a href="#cpp">Preprocessor</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.11. <a href="#objfile">Object file format</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.12. <a href="#ips">IPS output support</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.13. <a href="#linkage">Linkage selection</a><br>&nbsp;&nbsp;&nbsp;3. <a href="#changelog">Changelog</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#bugs">Known bugs</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#copying">Copying</a><br>&nbsp;&nbsp;&nbsp;6. <a href="#requirements">Requirements</a><br>&nbsp;&nbsp;&nbsp;7. <a href="#download">Downloading</a><br></td>
+<td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.8. <a href="#reloc">Code pointer relocation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.9. <a href="#branchlabels">Branch labels</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.10. <a href="#cpp">Preprocessor</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.11. <a href="#objfile">Object file format</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.12. <a href="#ips">IPS output support</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.13. <a href="#linkage">Linkage selection</a><br>&nbsp;&nbsp;&nbsp;3. <a href="#changelog">Changelog</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#bugs">Known bugs</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#copying">Copying</a><br>&nbsp;&nbsp;&nbsp;6. <a href="#download">Downloading</a><br></td>
 </tr></table></div><H2 id="purpose" class="level2"><a name="purpose"></a>1. Purpose</H2><div class="level2" id="divpurpose">
 
 This program reads symbolic 6502/RP2A03/RP2A07 machine code
@@ -67,68 +67,7 @@ The following mnemonics are supported:
 
 All the standard addressing modes of the 6502 cpu are supported.
 <p>
-Syntax:
-
-<table border="1">
- <tr>
-  <th>Name</th>
-  <th>Examples</th>
-  <th>Functionally equivalent to (not nescom syntax, provided for illustration only)</th>
- </tr>
- <tr>
-  <td>Implied:</td>
-   <td> <code>nop</code>; <code>clc</code> </td>
- </tr>
- <tr>
-  <td>Immediate:</td>
-   <td> <code>lda #value</code> etc </td>
-   <td> <code>a = value</code> </td>
- </tr>
- <tr>
-  <td>Short relative:</td>
-   <td> <code>bra end</code></td>
- </tr>
- <tr>
-  <td>Direct:</td>
-   <td> <code>lda $12</code></td>
-   <td> <code>a = ram[$0012]</code> </td>
- </tr>
- <tr>
-  <td>Direct indexed:</td>
-   <td> <code>lda $12,x</code><br><code>lda $12,y</code> </td>
-   <td> <code>a = ram[$0012 + x]</code><br><code>a = ram[$0012 + y]</code> </td>
- </tr>
- <tr>
-  <td>Direct indexed indirect:</td>
-   <td> <code>lda ($12,x)</code> </td>
-   <td> <code>a = ram[ramw[$0012 + x]]</code> </td>
- </tr>
- <tr>
-  <td>Direct indirect indexed:</td>
-   <td> <code>lda ($12),y</code> </td>
-   <td> <code>a = ram[ramw[$0012] + y]</code> </td>
- </tr>
- <tr>
-  <td>Absolute:</td>
-   <td> <code>lda $1234</code> </td>
-   <td> <code>a = ram[$1234]</code> </td>
- </tr>
- <tr>
-  <td>Absolute indexed:</td>
-   <td> <code>lda $1234,x</code><br><code>lda $1234,y</code> </td>
-   <td> <code>a = ram[$1234 + x]</code><br><code>a = ram[$1234 + y]</code> </td>
- </tr>
- <tr>
-  <td>Absolute indirect:</td>
-   <td> <code>lda ($1234)</code> </td>
-   <td> <code>a = ram[ramw[$1234]]</code> </td>
- </tr>
-</table>
-Note: "ram" and "ramw" in the table refer to generic
-address space access (RAM, I/O ports, ROM etc).
-"ramw" means 16-bit read access,
-but the meaning of "ram" depends on the context.
-It can be a read, write or a jump target, depending on instruction.
+<em>To be detailed later.</em>
 
 </div><H3 id="opsize" class="level3"><a name="opsize"></a>2.3. Operand size control</H3><div class="level3" id="divopsize">
 
@@ -241,7 +180,7 @@ to a symbol from those modules.
 Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
 Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
 Dec 16 2005; 0.2.0 support for deeper "++" and "--" labels. Also support for <code>.nop</code> statement.<br>
-Jun 20 2006; 1.0.0 raw output file format support in nescom. Also using boost::smart_ptr.
+Jun 20 2006; 1.0.0 raw output file format support in snescom. Also using boost::smart_ptr.
 
 </div><H2 id="bugs" class="level2"><a name="bugs"></a>4. Known bugs</H2><div class="level2" id="divbugs">
 
@@ -261,20 +200,14 @@ If you happen to see this program useful for you, I'd
 appreciate if you tell me :) Perhaps it would motivate
 me to enhance the program.
 
-</div><H2 id="requirements" class="level2"><a name="requirements"></a>6. Requirements</H2><div class="level2" id="divrequirements">
-
-nescom uses <a href="http://gcc.gnu.org/">GCC</a> as a slave in
-the preprocessing phase. Therefore, gcc must be installed and found
-in the PATH when running nescom.
-
-</div><H2 id="download" class="level2"><a name="download"></a>7. Downloading</H2><div class="level2" id="divdownload">
+</div><H2 id="download" class="level2"><a name="download"></a>6. Downloading</H2><div class="level2" id="divdownload">
    The official home page of nescom
    is at <a href="http://iki.fi/bisqwit/source/nescom.html">http://iki.fi/bisqwit/source/nescom.html</a>.<br>
    Check there for new versions.
 </div> <p align=right><small>Generated from
-       <tt>progdesc.php</tt> (last updated: Tue, 20 Jun 2006 13:08:08 +0300)<br>
+       <tt>progdesc.php</tt> (last updated: Tue, 20 Jun 2006 11:49:59 +0300)<br>
   with <tt>docmaker.php</tt> (last updated: Sun, 12 Jun 2005 06:08:02 +0300)<br>
-  at Tue, 20 Jun 2006 13:25:31 +0300</small>
+  at Tue, 20 Jun 2006 11:50:23 +0300</small>
  </p>
 </body>
 </html>
