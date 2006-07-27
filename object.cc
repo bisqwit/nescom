@@ -1038,7 +1038,7 @@ namespace
                 j != i->second.end();
                 ++j)
             {
-                patches.push_back(BuildGlobalPatch(j->first, NES2ROMaddr(j->second)));
+                patches.push_back(BuildGlobalPatch(j->first, (j->second)));
             }
         }
         
@@ -1053,17 +1053,17 @@ namespace
 
         WalkList(R16lo, Reloc)
         {
-            patches.push_back(BuildExternPatch(NES2ROMaddr(i->first), i->second, 1));
+            patches.push_back(BuildExternPatch((i->first), i->second, 1));
         }
         
         WalkList(R16, Reloc)
         {
-            patches.push_back(BuildExternPatch(NES2ROMaddr(i->first), i->second, 2));
+            patches.push_back(BuildExternPatch((i->first), i->second, 2));
         }
         
         WalkList(R24, Reloc)
         {
-            patches.push_back(BuildExternPatch(NES2ROMaddr(i->first), i->second, 3));
+            patches.push_back(BuildExternPatch((i->first), i->second, 3));
         }
         
         if(!seg.R.R16hi.Relocs.empty())
@@ -1099,36 +1099,34 @@ namespace
                 unsigned count = 20000;
                 if(count > left) count = left;
                 
-                const unsigned addr_rom = NES2ROMaddr(addr);
+                //fprintf(stderr, "Writing %u @ %06X\n", count, addr);
                 
-                //fprintf(stderr, "Writing %u @ %06X\n", count, addr_rom);
-                
-                if(addr_rom == IPS_EOF_MARKER)
+                if(addr == IPS_EOF_MARKER)
                 {
                     fprintf(stderr,
-                        "Error: IPS doesn't allow patches that go to $%X\n", addr_rom);
+                        "Error: IPS doesn't allow patches that go to $%X\n", addr);
                     assembly_errors = true;
                 }
-                else if(addr_rom == IPS_ADDRESS_EXTERN)
+                else if(addr == IPS_ADDRESS_EXTERN)
                 {
                     fprintf(stderr,
-                        "Error: Address $%X is reserved for IPS_ADDRESS_EXTERN\n", addr_rom);
+                        "Error: Address $%X is reserved for IPS_ADDRESS_EXTERN\n", addr);
                     assembly_errors = true;
                 }
-                else if(addr_rom == IPS_ADDRESS_GLOBAL)
+                else if(addr == IPS_ADDRESS_GLOBAL)
                 {
                     fprintf(stderr,
-                        "Error: Address $%X is reserved for IPS_ADDRESS_GLOBAL\n", addr_rom);
+                        "Error: Address $%X is reserved for IPS_ADDRESS_GLOBAL\n", addr);
                     assembly_errors = true;
                 }
-                else if(addr_rom > 0xFFFFFF)
+                else if(addr > 0xFFFFFF)
                 {
                     fprintf(stderr,
-                        "Error: Address $%X is too big for IPS format\n", addr_rom);
+                        "Error: Address $%X is too big for IPS format\n", addr);
                     assembly_errors = true;
                 }
                 
-                PutL(addr_rom, fp);
+                PutL(addr, fp);
                 PutMW(count, fp);
                 
                 std::vector<unsigned char> data = seg.GetContent(addr, count);
@@ -1187,12 +1185,16 @@ namespace
                 "         Substituting the 'base' with zero data.\n",
                 base-offset);
         }
-        fseek(fp, base, SEEK_SET);
-
-        std::vector<unsigned char> data = seg.GetContent();
-        PutS(&data[0], data.size(), fp);
         
-        fflush(fp);
+        if(fp)
+        {
+            fseek(fp, base, SEEK_SET);
+
+            std::vector<unsigned char> data = seg.GetContent();
+            PutS(&data[0], data.size(), fp);
+        
+            fflush(fp);
+        }
     }
     
     void NotWritingSeg(const Object::Segment& seg)
@@ -1328,10 +1330,13 @@ void Object::WriteRAW(std::FILE* fp, unsigned size, unsigned offset)
     NotWritingSeg(*bss);
     NotWritingSeg(*zero);
     
-    fseek(fp, 0, SEEK_END);
-    if(ftell(fp) < size)
+    if(fp)
     {
-        ftruncate(fileno(fp), size);
+        fseek(fp, 0, SEEK_END);
+        if(ftell(fp) < size)
+        {
+            ftruncate(fileno(fp), size);
+        }
     }
 }
 

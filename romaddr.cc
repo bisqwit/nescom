@@ -1,7 +1,7 @@
 #include "romaddr.hh"
 #include <stdio.h>
 
-unsigned ROMmap_npages = 2;
+unsigned ROMmap_npages = 4;
 
 unsigned long MakeNESaddr(unsigned char bank, unsigned offs)
 {
@@ -55,4 +55,9 @@ unsigned long NES2ROMaddr(unsigned long addr)
     unsigned long ret = NES2ROMaddr_(addr);
     //printf("NES %X -> ROM %X\n", addr, ret);
     return ret;
+}
+
+unsigned GetPageSize()
+{
+    return 0x4000;
 }

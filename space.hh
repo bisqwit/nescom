@@ -33,6 +33,18 @@ class freespacemap : public std::map<unsigned, freespaceset>
 {
     bool quiet;
 public:
+    /*
+    
+    Note: 16-bit here denotes addresses that do not need a page number.
+          The actual bitness is deduced from the GetPageSize() routine
+          in romaddr.hh.
+          24-bit denotes an address that has the page number built in.
+    */
+    
+    /*
+      In the NES version, freespacemap uses ROM-addresses!
+    */
+    
     freespacemap();
     
     void Report() const;

@@ -86,9 +86,9 @@ static int HandleIPS()
                              | (Buf2[name.size()+2] << 8)
                              | (Buf2[name.size()+3] << 16);
                 
-                //addr = ROM2NESaddr(addr);
+                unsigned trans_addr = addr;
                 
-                printf(".global %s\t;$%06X\n", name.c_str(), (unsigned)ROM2NESaddr(addr));
+                printf(".global %s\t;$%06X\n", name.c_str(), trans_addr);
                 
                 Globals[CODE].insert(make_pair(addr, name));
                 break;
@@ -113,8 +113,6 @@ static int HandleIPS()
                 else
                     var_id = i->second;
                 
-                //addr = ROM2NESaddr(addr);
-                
                 switch(size)
                 {
                     case 1:
@@ -135,7 +133,7 @@ static int HandleIPS()
             default:
             {
                 Relocs.sort();
-                ROMAddressing = true;
+                ROMAddressing = false;
                 DisAsm(pos, &Buf2[0], Buf2.size(), CODE);
             }
         }
@@ -262,12 +260,6 @@ static unsigned FixCodeAddr(unsigned a)
 {
     if(ROMAddressing) return ROM2NESaddr(a);
     return a;
-    /*
-    
-    if(a/0x4000 == 15) a = 0xC000 + (a&0x3FFF);
-    else a = (a/0x4000)*0x10000 + (a&0x3FFF) + 0x8000;
-    return a;
-    */
 }
 
 static std::string FindFixupAnchor

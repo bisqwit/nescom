@@ -169,9 +169,6 @@ With IPS this is especially useful.<br>
 You can change the code pointer as many times as you wish,
 but unless you're generating an IPS file, all code must be
 a continuous block.
- <p>
-Note that in the IPS format, the offset denotes the file offset,
-not NES offset.
 
 ", 'branchlabels:1.1. Branch labels' => "
 
@@ -237,7 +234,8 @@ Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
 Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
 Dec 16 2005; 0.2.0 support for deeper \"++\" and \"--\" labels. Also support for <code>.nop</code> statement.<br>
 Jun 20 2006; 1.0.0 raw output file format support in nescom. Also using boost::smart_ptr.<br>
-Jul 26 2006; 1.1.0 has now a linker, and an example program.
+Jul 26 2006; 1.1.0 has now a linker, and an example program.<br>
+Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversions.
 
 ", 'bugs:1. Known bugs' => "
 

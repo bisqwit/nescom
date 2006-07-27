@@ -120,7 +120,7 @@ void freespacemap::VerboseDump() const
             unsigned recpos = reci->lower;
             unsigned reclen = reci->upper - recpos;
             
-            unsigned pos = (page << 16) | recpos;
+            unsigned pos = page * GetPageSize() + recpos;
             
             //MarkFree(pos, reclen, "free");
         }
@@ -203,17 +203,32 @@ const freespaceset &freespacemap::GetList(unsigned pagenum) const
 
 void freespacemap::Add(unsigned page, unsigned begin, unsigned length)
 {
-    //fprintf(stderr, "Adding %u bytes of free space at %02X:%04X\n", length, page, begin);
+    fprintf(stderr, "Adding %u bytes of free space at %02X:%04X\n", length, page, begin);
+    if(begin + length > GetPageSize())
+    {
+        fprintf(stderr,
+            "freespacemap::Add: Error in Add($%02X,$%X, %u): Page is greater than %u bytes!\n",
+            page,begin,length, GetPageSize());
+    }
+    
     operator[] (page).set(begin, begin+length);
     operator[] (page).compact();
 }
 void freespacemap::Add(unsigned longaddr, unsigned length)
 {
-    Add(longaddr >> 16, longaddr & 0xFFFF, length);
+    Add(longaddr / GetPageSize(), longaddr % GetPageSize(), length);
 }
 
 void freespacemap::Del(unsigned page, unsigned begin, unsigned length)
 {
+    fprintf(stderr, "Deleting %u bytes of free space at %02X:%04X\n", length, page, begin);
+    if(begin + length > GetPageSize())
+    {
+        fprintf(stderr,
+            "freespacemap::Del: Error in Del($%02X,$%X, %u): Page is greater than %u bytes!\n",
+            page,begin,length, GetPageSize());
+    }
+    
     iterator i = find(page);
     if(i == end()) return;
     
@@ -224,7 +239,7 @@ void freespacemap::Del(unsigned page, unsigned begin, unsigned length)
 }
 void freespacemap::Del(unsigned longaddr, unsigned length)
 {
-    Del(longaddr >> 16, longaddr & 0xFFFF, length);
+    Del(longaddr / GetPageSize(), longaddr % GetPageSize(), length);
 }
 
 void freespacemap::Compact()
@@ -380,7 +395,7 @@ bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
         if(holes[holeid] >= itemsize)
         {
             unsigned pagenum = holepages[holeid];
-            spaceptr = holeaddrs[holeid] | (pagenum << 16);
+            spaceptr = holeaddrs[holeid] + (pagenum * GetPageSize());
             holeaddrs[holeid] += itemsize;
             holes[holeid]     -= itemsize;
             Del(spaceptr, itemsize);
@@ -410,7 +425,7 @@ bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned 
     freespacemap saved_this = *this;
     quiet = true;
     
-    unsigned bestpagenum = 0x3F; /* Guess */
+    unsigned bestpagenum = 0x00; /* Guess */
     unsigned bestpagesize = 0;
     bool first = true;
     bool candidates = false;
@@ -463,7 +478,7 @@ unsigned freespacemap::FindFromAnyPage(unsigned length)
 {
     FILE *log = GetLogFile("mem", "log_addrs");
 
-    unsigned leastfree=0, bestpage=0x3F; /* guess */
+    unsigned leastfree=0, bestpage=0x00; /* guess */
     bool first=true;
     for(const_iterator i=begin(); i!=end(); ++i)
     {
@@ -489,7 +504,7 @@ unsigned freespacemap::FindFromAnyPage(unsigned length)
             fprintf(log, "No %u-byte free space block available!\n", length);
         return NOWHERE;
     }
-    return Find(bestpage, length) | (bestpage << 16);
+    return Find(bestpage, length) + (bestpage * GetPageSize());
 }
 
 #include "o65linker.hh"
@@ -528,8 +543,6 @@ void freespacemap::OrganizeO65linker
             {
                 /* No linking, just ensure we won't overwrite it */
                 Del(addrs[a], sizes[a]);
-                //addrs[a] = ROM2NESaddr(addrs[a]);
-                // ^ it is already supposed to be in NES layout format.
                 break;
             }
         }
@@ -555,8 +568,8 @@ void freespacemap::OrganizeO65linker
             unsigned addr = Organization[c].pos;
             if(addr != NOWHERE)
             {
-                addr |= (page << 16);
-                if(seg == CODE) addr = ROM2NESaddr(addr);
+                if(seg == CODE) addr = MakeNESaddr(page, addr);
+                else addr += page * GetPageSize();
             }
             addrs[items[c]] = addr;
         }
@@ -584,8 +597,8 @@ void freespacemap::OrganizeO65linker
             unsigned addr = Organization[c].pos;
             if(addr != NOWHERE)
             {
-                addr |= (page << 16);
-                if(seg == CODE) addr = ROM2NESaddr(addr);
+                if(seg == CODE) addr = MakeNESaddr(page, addr);
+                else addr += page * GetPageSize();
             }
             addrs[items[c]] = addr;
         }
@@ -605,7 +618,8 @@ void freespacemap::OrganizeO65linker
         unsigned addr = Organization[c].pos;
         if(addr != NOWHERE)
         {
-            if(seg == CODE) addr = ROM2NESaddr(addr);
+            if(seg == CODE)
+                addr = MakeNESaddr(addr / GetPageSize(), addr % GetPageSize());
         }
         addrs[items[c]] = addr;
     }
