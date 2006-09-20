@@ -80,6 +80,7 @@ public:
     
     /*! Declares a 8-bit relocation to given symbol */
     void DeclareByteRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
+    void DeclareHiByteRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
     /*! Declares a 16-bit relocation to given symbol */
     void DeclareWordRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
     /*! Declares a 24-bit relocation to given symbol */

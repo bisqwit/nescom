@@ -287,8 +287,13 @@ function FindInodes($directory)
       
       foreach($sub['if'] as $ino => $fil)
       {
-        $inofil[$ino] = array_merge($inofil[$ino], $fil);
+        $tgt = &$inofil[$ino];
+        if(is_array($tgt))
+          $tgt = array_merge($tgt, $fil);
+        else
+          $tgt = $fil;
       }
+      unset($tgt);
     }
   }
   closedir($fp);

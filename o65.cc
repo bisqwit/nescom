@@ -670,6 +670,24 @@ void O65::DeclareWordRelocation(SegmentSelection seg, const std::string& name, u
     (*s)->R.R16.AddReloc(addr, symno);
 }
 
+void O65::DeclareHiByteRelocation(SegmentSelection seg, const std::string& name, unsigned addr)
+{
+    Segment**s = GetSegRef(seg); if(!s) return;
+    
+    unsigned symno = defs->GetSymno(name);
+    
+    if(symno == ~0U)
+        symno = defs->AddUndefined(name);
+    else if(defs->IsDefined(symno))
+    {
+        unsigned value = defs->GetValue(symno);
+        addr -= (*s)->base;
+        (*s)->space[addr] = (value >> 8) & 0xFF;
+        return;
+    }
+    (*s)->R.R16hi.AddReloc(addr, symno);
+}
+
 void O65::DeclareLongRelocation(SegmentSelection seg, const std::string& name, unsigned addr)
 {
     Segment**s = GetSegRef(seg); if(!s) return;

@@ -78,7 +78,7 @@ Syntax:
  </tr>
  <tr>
   <td>Short relative:</td>
-   <td> <code>bra end</code></td>
+   <td> <code>bcc end</code></td>
  </tr>
  <tr>
   <td>Direct:</td>
@@ -137,7 +137,7 @@ that can be used to force a certain operand size/type.
 
 Expressions are supported. These are valid code:
 <ul>
- <li><code>bra somewhere+1</code></li>
+ <li><code>bcc somewhere+1</code></li>
  <li><code>lda #!address + \$100</code></li>
  <li><code>ldy #\$1234 + (\$6C * 3)</code></li>
 </ul>

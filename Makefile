@@ -19,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=1.1.1
+VERSION=1.1.2
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -34,7 +34,7 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           dataarea.cc dataarea.hh \
           main.cc \
           \
-          disasm.cc \
+          disasm.cc clever.cc \
           \
           o65.cc o65.hh relocdata.hh \
           o65linker.cc o65linker.hh \
@@ -52,7 +52,7 @@ BINDIR=$(PREFIX)/bin
 ARCHNAME=nescom-$(VERSION)
 ARCHDIR=archives/
 
-PROGS=nescom disasm neslink
+PROGS=nescom disasm clever-disasm neslink
 
 INSTALLPROGS=nescom neslink
 INSTALL=install
@@ -75,6 +75,9 @@ neslink: \
 	$(CXX) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
 
 disasm: disasm.o romaddr.o o65.o
+	$(CXX) $(CXXFLAGS) -g -o $@ $^
+
+clever-disasm: clever.o
 	$(CXX) $(CXXFLAGS) -g -o $@ $^
 
 clean: FORCE
