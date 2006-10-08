@@ -19,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=1.1.2
+VERSION=1.1.3
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -35,6 +35,7 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           main.cc \
           \
           disasm.cc clever.cc \
+          link.cc \
           \
           o65.cc o65.hh relocdata.hh \
           o65linker.cc o65linker.hh \

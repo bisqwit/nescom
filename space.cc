@@ -221,7 +221,7 @@ void freespacemap::Add(unsigned longaddr, unsigned length)
 
 void freespacemap::Del(unsigned page, unsigned begin, unsigned length)
 {
-    fprintf(stderr, "Deleting %u bytes of free space at %02X:%04X\n", length, page, begin);
+    //fprintf(stderr, "Deleting %u bytes of free space at %02X:%04X\n", length, page, begin);
     if(begin + length > GetPageSize())
     {
         fprintf(stderr,

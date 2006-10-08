@@ -65,14 +65,15 @@ public:
     const std::set<unsigned> GetPageList() const;
     const freespaceset& GetList(unsigned pagenum) const;
 
-    /* These don't need to be private, but they are
-     * now to ensure Chronotools doesn't use them.
-     */
-private:
     // Returns segment-relative address (16-bit)
     unsigned Find(unsigned page, unsigned length);
     // Returns abbsolute address (24-bit)
     unsigned FindFromAnyPage(unsigned length);
+
+    /* These don't need to be private, but they are
+     * now to ensure Chronotools doesn't use them.
+     */
+private:
     
     unsigned Size() const;
     unsigned Size(unsigned page) const;

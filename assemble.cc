@@ -67,6 +67,12 @@ namespace
     {
         unsigned value = 0;
         
+        if(p.exp.get() == NULL)
+        {
+            fprintf(stderr, "ParseConst: param is null (#1)\n");
+            abort();
+        }
+        
         std::set<std::string> labels;
         FindExprUsedLabels(p.exp.get(), labels);
         
@@ -80,9 +86,22 @@ namespace
             if(obj.FindLabel(label, seg, value))
             {
                 expression* e = p.exp.get();
+                //fprintf(stderr, "e pre_s: %p (%s)\n", (void*)e, e->Dump().c_str());
                 SubstituteExprLabel(e, label, value, false);
-                boost::shared_ptr<expression> tmp(e);
-                p.exp.swap(tmp);
+                //fprintf(stderr, "e aft_s: %p (%s)\n", (void*)e, e->Dump().c_str());
+                //fprintf(stderr, "exp aft: %p (%s)\n", (void*)p.exp.get(), p.exp->Dump().c_str());
+
+                if(e != p.exp.get())
+                {
+                    boost::shared_ptr<expression> tmp(e);
+
+                    //fprintf(stderr, "  e sha: %p (%s)\n", (void*)e, e->Dump().c_str());
+                    //fprintf(stderr, "    tmp: %p (%s)\n", (void*)tmp.get(), tmp->Dump().c_str());
+                    
+                    p.exp.swap(tmp);
+                    
+                    //fprintf(stderr, "  p.exp: %p (%s)\n", (void*)p.exp.get(), p.exp->Dump().c_str());
+                }
             }
             else
             {
@@ -91,6 +110,14 @@ namespace
                     label.c_str(), p.Dump().c_str());
             }
         }
+        
+        if(p.exp.get() == NULL)
+        {
+            fprintf(stderr, "ParseConst: param is null (#2)\n");
+            abort();
+        }
+        
+        //fprintf(stderr, "p.dump=%s\n", p.exp->Dump().c_str());
         
         if(p.exp->IsConst())
             value = p.exp->GetConst();
@@ -258,7 +285,6 @@ GotLabel:
                     if(!ParseExpression(data, p)
                     || p.is_word().is_false())
                     {
-                        /* FIXME: syntax error */
                         std::fprintf(stderr, "Syntax error at '%s'\n",
                             data.GetRest().c_str());
                         ok = false;
@@ -292,7 +318,6 @@ GotLabel:
                     if(!ParseExpression(data, p)
                     || p.is_long().is_false())
                     {
-                        /* FIXME: syntax error */
                         std::fprintf(stderr, "Syntax error at '%s'\n",
                             data.GetRest().c_str());
                         ok = false;
@@ -677,12 +702,12 @@ GotLabel:
             std::fprintf(stderr, " (certain)");
         std::fprintf(stderr, "\n");
 #endif
-        
-        // *FIXME* choices not properly deallocated
     }
 
     void ParseLine(Object& result, const std::string& s)
     {
+        //fprintf(stderr, "ParseLine: %s\n", s.c_str());
+        
         // Break into statements, assemble each by each
         for(unsigned a=0; a<s.size(); )
         {

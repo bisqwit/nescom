@@ -44,6 +44,8 @@ void expr_negate::Optimize(expression*& self_ptr)
 
 void SubstituteExprLabel(expression*& e, const std::string& name, long value, bool del_old)
 {
+    bool del_children = del_old;
+
     if(expr_label* l = dynamic_cast<expr_label*> (e))
     {
         if(l->GetName() == name)
@@ -54,19 +56,19 @@ void SubstituteExprLabel(expression*& e, const std::string& name, long value, bo
     }
     else if(expr_unary* u = dynamic_cast<expr_unary*> (e))
     {
-        SubstituteExprLabel(u->sub, name, value);
+        SubstituteExprLabel(u->sub, name, value, del_children);
     }
     else if(expr_binary* b = dynamic_cast<expr_binary*> (e))
     {
-        SubstituteExprLabel(b->left, name, value);
-        SubstituteExprLabel(b->right, name, value);
+        SubstituteExprLabel(b->left, name, value, del_children);
+        SubstituteExprLabel(b->right, name, value, del_children);
     }
     else if(sum_group* s = dynamic_cast<sum_group*> (e))
     {
         for(sum_group::list_t::iterator
             i = s->contents.begin(); i != s->contents.end(); ++i)
         {
-            SubstituteExprLabel(i->first, name, value);
+            SubstituteExprLabel(i->first, name, value, del_children);
         }
     }
 }
