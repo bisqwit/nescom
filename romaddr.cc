@@ -46,14 +46,14 @@ static unsigned long NES2ROMaddr_(unsigned long addr)
 unsigned long ROM2NESaddr(unsigned long addr)
 {
     unsigned long ret = ROM2NESaddr_(addr);
-    //printf("ROM %X -> NES %X\n", addr, ret);
+    //fprintf(stderr, "ROM %X -> NES %X\n", addr, ret);
     return ret;
 }
 
 unsigned long NES2ROMaddr(unsigned long addr)
 {
     unsigned long ret = NES2ROMaddr_(addr);
-    //printf("NES %X -> ROM %X\n", addr, ret);
+    //fprintf(stderr, "NES %X -> ROM %X\n", addr, ret);
     return ret;
 }
 

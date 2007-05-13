@@ -235,9 +235,10 @@ Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
 Dec 16 2005; 0.2.0 support for deeper \"++\" and \"--\" labels. Also support for <code>.nop</code> statement.<br>
 Jun 20 2006; 1.0.0 raw output file format support in nescom. Also using boost::smart_ptr.<br>
 Jul 26 2006; 1.1.0 has now a linker, and an example program.<br>
-Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversions.
-Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.
-Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.
+Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversions.<br>
+Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.<br>
+Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.<br>
+May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.
 
 ", 'bugs:1. Known bugs' => "
 

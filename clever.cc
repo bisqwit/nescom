@@ -7,18 +7,18 @@
 #include <map>
 #include <stdint.h>
 
-#define TRACK_RAM_SIZE 0x800
-//#define TRACK_RAM_SIZE 0x100
+//#define TRACK_RAM_SIZE 0x800
+#define TRACK_RAM_SIZE 0x100
 
 struct BadAddressException { };
 
 static unsigned LastPage;
 static unsigned char* ROM;
-static unsigned char* Pages[4] = {0,0,0,0};
+static unsigned char* Pages[8] = {0,0,0,0};
 inline unsigned char& Rd6502(unsigned addr)
 {
-    unsigned char page = addr >> 14;
-    unsigned pageaddr  = addr & 0x3FFF;
+    unsigned char page = addr >> 13;
+    unsigned pageaddr  = addr & 0x1FFF;
     
     //printf("%X = page %u, addr %X\n", addr, page, pageaddr);
     
@@ -26,7 +26,7 @@ inline unsigned char& Rd6502(unsigned addr)
 }
 static void SetPage(unsigned addrpage, unsigned rompage)
 {
-    unsigned char* ptr = ROM + (rompage << 14);
+    unsigned char* ptr = ROM + (rompage << 13);
     //printf("SetPage(%u,%p)\n", addrpage,ptr);
     Pages[addrpage] = ptr;
 }
@@ -43,22 +43,23 @@ static unsigned addr_to_rom(unsigned addrptr)
     return romptr;
 }
 
-static unsigned Mapper2Val;
-static void Mapper2Set(unsigned page)
-{
-    Mapper2Val = page;
-    SetPage(2, page);
-}
+static unsigned Page0, Page1, Page2, Page3;
+
 static unsigned rom_to_addr(unsigned romptr)
 {
-    unsigned rompage = romptr >> 14;
-    unsigned romaddr = romptr & 0x3FFF;
-    if(rompage >= LastPage)
+    unsigned rompage = romptr >> 13;
+    unsigned romaddr = romptr & 0x1FFF;
+    if(rompage == LastPage
+    || rompage == LastPage-1)
     {
-        return 0xC000 + romaddr;
+        SetPage(6, Page2=LastPage-1);
+        SetPage(7, Page3=LastPage);
+        return 0xC000 + romaddr + (rompage&1)*0x2000;
     }
-    Mapper2Set(rompage);
-    return 0x8000 + romaddr;
+
+    SetPage(4, Page0 = (rompage&~1));
+    SetPage(5, Page1 = (rompage&~1)+1);
+    return 0x8000 + romaddr + (rompage&1)*0x2000;
 }
 
 #define WORD(A) (Rd6502((A)+1)*256+Rd6502((A)))
@@ -198,23 +199,17 @@ struct ValueNotKnownException { };
 
 static void PrintRomAddress(unsigned romptr)
 {
-    unsigned rompage = romptr >> 14;
-    unsigned romaddr = romptr & 0x3FFF;
-    
-    //printf("(%05X)<%u>",romptr, Mapper2val);
-    
-    unsigned page = rompage;
-    if(rompage >= LastPage)
-    {
-        page = LastPage;
-        romaddr += 0xC000;
-    }
+    unsigned rompage = romptr >> 13;
+    unsigned romaddr = romptr & 0x1FFF;
+    unsigned res = 0;
+    if(rompage == LastPage)   { res = 0xE000 + romaddr; goto done; }
+    if(rompage == LastPage-1) { res = 0xC000 + romaddr; goto done; }
+    if(rompage & 1)
+        { res = 0xA000 + romaddr; goto done; }
     else
-    {
-        romaddr += 0x8000;
-    }
-    //printf("<%X>$%04X", page, romaddr);
-    printf("$%04X", romaddr);
+        { res = 0x8000 + romaddr; goto done; }
+done:
+    printf("$%04X", res);
 }
 
 enum CodeLikelihood
@@ -248,7 +243,10 @@ enum SpecialTypes
 {
     None,
     DataTableRoutineWithXY,
-    JumpTableRoutineWithAppendix
+    JumpTableRoutineWithAppendix,
+    MapperChangeRoutineWithReg,
+    MapperChangeRoutineWithConst,
+    MapperChangeRoutineWithRAM
 };
 
 static int CertaintyOf(CodeLikelihood type)
@@ -285,12 +283,13 @@ private:
     uint_least32_t romaddr;
     int_least32_t defined_at;
     int_least16_t value;
-    char known; //0=false, 1=true, 2=uninitialized, 3=rom_xindex, 4=rom_yindex
+    char known; //0=false, 1=true, 2=uninitialized, 3=rom_xindex, 4=rom_yindex, 5=weak
     
     friend class SimulCPU;
 public:    
     SimulReg(): defined_at(-1), value(0),known(2) { }
     void Invalidate() { known=0; defined_at = -1; }
+    void MakeWeak() { if(known==1) known=5; else Invalidate(); }
     void Assign(const SimulReg& reg) { *this = reg; }
     void Assign(int v, int defloc=-1) { value=v; known=1; defined_at = defloc; }
     void AssignXindex(unsigned romptr, int defloc=-1) { romaddr=romptr; known=3; defined_at = defloc; }
@@ -298,12 +297,25 @@ public:
     
     void Combine(const SimulReg& reg)
     {
-        if(known != 1) *this = reg;
-        else if(reg.known == 1 && value != reg.value) Invalidate();
-        else if(reg.known == 0) Invalidate();
+        switch(known)
+        {
+            case 0:
+            case 2:
+                *this = reg; break;
+            case 1:
+            case 3:
+            case 4:
+                if(value != reg.value && reg.known != 5 && reg.known != 2)
+                    Invalidate();
+                break;
+            case 5:
+                if(reg.known == 0 || reg.known == 2) {} //Invalidate();
+                else *this = reg;
+                break;
+        }
     }
     
-    bool Known() const { return known == 1; }
+    bool Known() const { return known == 1 || known == 5; }
     
     unsigned IsIndexed() const { switch(known) { case 3:case 4: return romaddr; } return 0; }
     char GetIndexType() const { switch(known) { case 3:return 'x';case 4:return 'y'; } return 0; }
@@ -321,6 +333,7 @@ public:
             case 2: printf("(...)"); break;
             case 3: printf("$%04X,x", romaddr); break;
             case 4: printf("$%04X,y", romaddr); break;
+            case 5: printf("(?%02X)", value); break;
         }
     }
 };
@@ -392,23 +405,25 @@ struct SimulCPU
     SimulFlag Sflag;
     std::deque<SimulReg> Stack;
     SimulRegPtr RAM[TRACK_RAM_SIZE];
-    SimulReg map2val;
     
-    void SetMap(SimulReg& v)
+    SimulReg pagereg[4];
+    
+    void SetPageReg(unsigned page, SimulReg& v) { pagereg[page].Assign(v); }
+    void SetPageReg(unsigned page, int v, bool weak = false)
     {
-        map2val.Assign(v);
+        if(weak)
+            { SimulReg tmp; tmp.Assign(v); tmp.MakeWeak();
+              pagereg[page].Combine(tmp); }
+        else
+            pagereg[page].Assign(v);
     }
-    void SetMap(int v)
-    {
-        map2val.Assign(v);
-    }
+    
     void LoadMap() const
     {
-        if(map2val.known == 1)
-        {
-            //fprintf(stderr, "Mapper2Set(%u)\n", map2val.value);
-            //Mapper2Set(map2val.value);
-        }
+        if(pagereg[0].Known()) SetPage(4, Page0 = pagereg[0].Value());
+        if(pagereg[1].Known()) SetPage(5, Page1 = pagereg[1].Value());
+        if(pagereg[2].Known()) SetPage(6, Page2 = pagereg[2].Value());
+        if(pagereg[3].Known()) SetPage(7, Page3 = pagereg[3].Value());
     }
     
     void Invalidate()
@@ -418,8 +433,9 @@ struct SimulCPU
         Y.Invalidate();
         Zflag.Invalidate();
         Sflag.Invalidate();
-        map2val.Invalidate();
+        for(unsigned a=0; a<4; ++a) pagereg[a].MakeWeak();
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a) RAM[a].Invalidate();
+        //RAM[0x24].Assign(6);
     }
     void Push(const SimulReg& reg) { Stack.push_back(reg); }
     void Pop(SimulReg& reg)
@@ -440,8 +456,8 @@ struct SimulCPU
         Y.Combine(cpu2.Y);
         Zflag.Combine(cpu2.Zflag);
         Sflag.Combine(cpu2.Sflag);
-        map2val.Combine(cpu2.map2val);
-        
+        for(unsigned a=0; a<4; ++a)
+            pagereg[a].Combine(cpu2.pagereg[a]);
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a)
             RAM[a].Combine(cpu2.RAM[a]);
         
@@ -464,7 +480,14 @@ struct SimulCPU
         printf("A"); A.Dump();
         printf("X"); X.Dump();
         printf("Y"); Y.Dump();
-        printf("M"); map2val.Dump();
+        
+        printf("MAP[");
+        printf("%u:", Page0); pagereg[0].Dump();
+        printf(",%u:", Page1); pagereg[1].Dump();
+        printf(",%u:", Page2); pagereg[2].Dump();
+        printf(",%u:", Page3); pagereg[3].Dump();
+        printf("]");
+        
         printf("s(%u)", (unsigned)Stack.size());
         printf("Z"); Zflag.Dump();
         printf("S"); Sflag.Dump();
@@ -473,8 +496,121 @@ struct SimulCPU
 
     SimulCPU()
     {
-        map2val.Assign(Mapper2Val);
+        ImportMap(true);
     }
+    
+    void ImportMap(bool weak)
+    {
+        ImportMap(0, weak);
+        ImportMap(1, weak);
+        ImportMap(2, weak);
+        ImportMap(3, weak);
+    }
+    void ImportMap(unsigned page, bool weak)
+    {
+        //printf("Import map. Orig: "); Dump(); printf("\n");
+        switch(page)
+        {
+            case 0: SetPageReg(0, Page0, weak); break;
+            case 1: SetPageReg(1, Page1, weak); break;
+            case 2: SetPageReg(2, Page2, weak); break;
+            case 3: SetPageReg(3, Page3, weak); break;
+        }
+        //printf("-------> Changed: "); Dump(); printf("\n");
+    }
+    
+    void MapperWrite(unsigned addr, const SimulReg& reg)
+    {
+#if 0 /* MAPPER 2 */
+        if(reg.Known())
+        {
+            SetPageReg(0, reg.Value()*2+0, false);
+            SetPageReg(1, reg.Value()*2+1, false);
+            
+        }
+        else
+        {
+            pagereg[0].MakeWeak();
+            pagereg[1].MakeWeak();
+        }
+#endif
+#if 1 /* MAPPER 1 */
+        if(!reg.Known())
+        {
+            pagereg[0].MakeWeak();
+            pagereg[1].MakeWeak();
+            pagereg[2].MakeWeak();
+            pagereg[3].MakeWeak();
+            return;
+        }
+        static unsigned regs[4], shift, buffer;
+        unsigned n = (addr >> 13)-4;
+        unsigned v = reg.Value();
+        bool regnew[4] = {false,false,false,false};
+        bool p0_weak=true, p2_weak=true;
+        if(v & 0x80)
+        {
+            regs[0] |= 0x0C;
+            shift=buffer=0;
+            goto DoMMC1_PRG;
+        }
+        buffer |= (v&1) << shift++;
+        if(shift == 5)
+        {
+            regs[n] = buffer;
+            regnew[n] = true;
+            shift=buffer=0;
+            if(n != 2)
+            {
+            DoMMC1_PRG:
+                unsigned offs = regs[1]&0x10;
+                unsigned newp0=0, newp2=2;
+                switch(regs[0] & 0x0C)
+                {
+                    case 0: case 4:
+                        newp0=(regs[3]&~1)+offs; p0_weak = !regnew[3] || !regnew[1];
+                        newp2=newp0+2;           p2_weak = p0_weak;
+                        break;
+                    case 8:
+                        newp2=regs[3];           p2_weak = !regnew[3];
+                        newp0=offs;              p0_weak = !regnew[1];
+                        break;
+                    case 12:
+                        newp0=regs[3];           p0_weak = !regnew[3];
+                        newp2=0xF+offs;          p2_weak = !regnew[1];
+                        break;
+                }
+                SetPageReg(0, newp0*2  , p0_weak);
+                SetPageReg(1, newp0*2+1, p0_weak);
+                SetPageReg(2, newp2*2  , p2_weak);
+                SetPageReg(3, newp2*2+1, p2_weak);
+                LoadMap();
+            }
+        }
+#endif
+    }
+    void MapperProgram(const SimulReg& reg)
+    {
+#if 1 /* MAPPER 1*/
+        if(!reg.Known())
+        {
+            pagereg[0].MakeWeak();
+            pagereg[1].MakeWeak();
+            return;
+        }
+        SetPageReg(0, reg.Value()*2+0, false);
+        SetPageReg(1, reg.Value()*2+1, false);
+        LoadMap();
+        
+        printf("Mapper regs now(");
+        printf("%u:", Page0); pagereg[0].Dump();
+        printf(",%u:", Page1); pagereg[1].Dump();
+        printf(",%u:", Page2); pagereg[2].Dump();
+        printf(",%u:", Page3); pagereg[3].Dump();
+        printf(")\n");
+#endif
+    }
+    
 private:
     //SimulCPU(const SimulCPU&);
 
@@ -501,6 +637,7 @@ struct State
     CodeLikelihood Type;
     
     SpecialTypes SpecialType;
+    unsigned     SpecialTypeParam;
     
     // Code:
     std::set<unsigned/*romptr*/> CalledFrom;
@@ -1626,6 +1763,35 @@ private:
     {    
         return IsSpecialType(romptr, DataTableRoutineWithXY);
     }
+    bool IsMapperChangeRoutine(const unsigned romptr, const SimulCPU& cpu,
+                               SimulReg& result) const
+    {
+        if(IsSpecialType(romptr, MapperChangeRoutineWithReg))
+        {
+            switch(results[romptr].SpecialTypeParam)
+            {
+                case 0: result.Assign(cpu.A); break;
+                case 1: result.Assign(cpu.X); break;
+                case 2: result.Assign(cpu.Y); break;
+            }
+            return true;
+        }
+        if(IsSpecialType(romptr, MapperChangeRoutineWithConst))
+        {
+            result.Assign(results[romptr].SpecialTypeParam);
+            return true;
+        }
+        if(IsSpecialType(romptr, MapperChangeRoutineWithRAM))
+        {
+            unsigned addr = results[romptr].SpecialTypeParam;
+            try {
+                result.Assign(cpu.ReadRAM(addr));
+            } catch(ValueNotKnownException) {
+            }
+            return true;
+        }
+        return false;
+    }
     
     bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed)
     {
@@ -1638,16 +1804,18 @@ private:
     {
         State& state = results[romptr];
         
-        if((romptr>>14) < LastPage)
-        {
-            state.cpu.SetMap(romptr >> 14);
-        }
-    
-        state.cpu.LoadMap();
-        
         unsigned addrptr = rom_to_addr(romptr);
         
-        //printf("Processing %05X (%04X)\n", romptr, addrptr);
+        state.cpu.ImportMap(((addrptr >> 13)&3)  , true);
+        state.cpu.ImportMap(((addrptr >> 13)&3)^1, true);
+        state.cpu.LoadMap();
+
+        /*printf("Processing %05X (%04X) (", romptr,addrptr);
+        printf("%u:", Page0); state.cpu.pagereg[0].Dump();
+        printf(",%u:", Page1); state.cpu.pagereg[1].Dump();
+        printf(",%u:", Page2); state.cpu.pagereg[2].Dump();
+        printf(",%u:", Page3); state.cpu.pagereg[3].Dump();
+        printf(")\n");*/
         
         Disassembly& code = state.code;
         code = DAsm(addrptr);
@@ -1662,22 +1830,23 @@ private:
             case Ax:
             case Ay:
             case In:
-                if(code.Param >= 0x8000)
+                /* Access of a memory address. Do not allow STA/STX/STY. */
+                if(code.OpCodeId != 44 //sta
+                && code.OpCodeId != 45 //stx
+                && code.OpCodeId != 46)//sty
                 {
-                    /* no stores to ROM */
-                    if(code.OpCodeId != 44 //sta
-                    && code.OpCodeId != 45 //stx
-                    && code.OpCodeId != 46)//sty
+                    /* If it's a read from a ROM address */
+                    if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
+                    || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
+                    || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
+                    || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
+                      )
                     {
-                        /* If it's a load from a ROM address */
-                        if(code.Param >= 0x8000 || state.cpu.map2val.Known())
-                        {
-                            /* It's almost certainly data */
-                            unsigned param_romptr = addr_to_rom(code.Param);
-                            
-                            if(code.Mode != Ax && code.Mode != Ay)
-                            MarkAddressMaybeData(param_romptr, code.Mode==Ax || code.Mode==Ay);
-                        }
+                        /* It's almost certainly data */
+                        unsigned param_romptr = addr_to_rom(code.Param);
+                        
+                        if(code.Mode != Ax && code.Mode != Ay)
+                        MarkAddressMaybeData(param_romptr, code.Mode==Ax || code.Mode==Ay);
                     }
                 }
                 break;
@@ -1814,9 +1983,13 @@ private:
             {
                 if(code.Mode != Iw) break;
                 
-                if(code.Param >= 0xC000 || state.cpu.map2val.Known())
+                if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
+                || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
+                || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
+                || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
+                  )
                 {
-                    unsigned Branch = addr_to_rom(code.Param);
+                    Branch = addr_to_rom(code.Param);
                     Mark(Branch, CertainlyCode, true);
                     results[Branch].cpu.Combine(state.cpu);
                     results[Branch].JumpedFromInsert(romptr);
@@ -1845,9 +2018,13 @@ private:
                     }
                 }
             */
-                if(code.Param >= 0xC000 || state.cpu.map2val.Known())
+                if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
+                || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
+                || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
+                || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
+                  )
                 {
-                    unsigned Branch = addr_to_rom(code.Param);
+                    Branch = addr_to_rom(code.Param);
                     
                     results[Branch].CalledFrom.insert(romptr);
                     
@@ -1889,7 +2066,21 @@ private:
                            }
                         }
                     }
+                    
+                    SimulReg tmp;
+                    if(IsMapperChangeRoutine(Branch, state.cpu, tmp))
+                    {
+                        printf("Call to $%X: Reprogramming mapper with ", Branch);
+                        tmp.Dump();
+                        printf("\n");
+                        state.cpu.MapperProgram(tmp);
+                    }
                 }
+                else
+                {
+                    printf("Call to $%X: Unknown target\n", code.Param);
+                }
+                
                 Mark(Next, MaybeCode); // there's no guarantee that the jsr will return
                 state.cpu.Invalidate(); // a function may change any registers
                 break;
@@ -1900,7 +2091,7 @@ private:
                 // conditional jumps (bcc,beq,bmi,bvc,
                 //                    bcs,bne,bpl,bvs)
             {
-                unsigned Branch = addr_to_rom(code.Param);
+                Branch = addr_to_rom(code.Param);
 
                 if(results[Branch].Type == 50) // not visited, so just copy our state
                 {
@@ -2077,7 +2268,7 @@ private:
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.SetMap(state.cpu.A);
+                            state.cpu.MapperWrite(code.Param, state.cpu.A);
                             break;
                         }
                     default: ;
@@ -2095,7 +2286,7 @@ private:
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.SetMap(state.cpu.X);
+                            state.cpu.MapperWrite(code.Param, state.cpu.X);
                             break;
                         }
                     default: ;
@@ -2113,7 +2304,7 @@ private:
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.SetMap(state.cpu.Y);
+                            state.cpu.MapperWrite(code.Param, state.cpu.Y);
                             break;
                         }
                     default: ;
@@ -2182,8 +2373,18 @@ private:
                 Mark(Next, CertainlyCode);
         }
         
-        if(Next   != NoWhere) results[Next].cpu.Combine(state.cpu);
-        if(Branch != NoWhere) results[Branch].cpu.Combine(state.cpu);
+        if(Next   != NoWhere)
+        {
+            //printf("Combining $%X (next) from $%X, Result: ", Next, romptr);
+            results[Next].cpu.Combine(state.cpu);
+            //results[Next].cpu.Dump(); printf("\n");
+        }
+        if(Branch != NoWhere)
+        {
+            //printf("Combining $%X (branch) from $%X, Result: ", Branch, romptr);
+            results[Branch].cpu.Combine(state.cpu);
+            //results[Branch].cpu.Dump(); printf("\n");
+        }
         
         /* Mark the rest of the opcode as PartialCode, but don't
          * add it to the visit list
@@ -2248,6 +2449,8 @@ public:
 
     unsigned ReadPointerValueAt(const PointerTableItem& i) const
     {
+        rom_to_addr(i.loptr); // Autoguess mappings
+        
         unsigned ptrlo = ROM[i.loptr];
         unsigned ptrhi = ROM[i.hiptr];
         unsigned addr = ptrlo | (ptrhi << 8);
@@ -2353,6 +2556,11 @@ public:
     {
         results[romptr].SpecialType = type;
     }
+    void SetSpecialType(unsigned romptr, SpecialTypes type, unsigned param)
+    {
+        results[romptr].SpecialType      = type;
+        results[romptr].SpecialTypeParam = param;
+    }
     
 private:
     std::vector<State> results; /* indexed by romptr */
@@ -2366,7 +2574,7 @@ private:
 static void DumpMappings()
 {
     printf("Mappings:\n");
-    for(unsigned a=2; a<4; ++a)
+    for(unsigned a=4; a<8; ++a)
         printf(" Page %u: %X\n",
             a, (unsigned)(Pages[a]-ROM));
 }
@@ -2464,6 +2672,36 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             dasm.SetSpecialType(address, JumpTableRoutineWithAppendix);
             continue;
         }
+        if(tokens[0] == "MapperChangeRoutine")
+        {
+            if(tokens.size() != 4) goto SyntaxError;
+            int address = ParseInt(tokens[1]);
+            std::string type = tokens[2];
+            if(type == "const")
+            {
+                int param   = ParseInt(tokens[3]);
+                dasm.SetSpecialType(address, MapperChangeRoutineWithConst, param);
+            }
+            else if(type == "ram" || type == "RAM")
+            {
+                int param   = ParseInt(tokens[3]);
+                dasm.SetSpecialType(address, MapperChangeRoutineWithRAM, param);
+            }
+            else if(type == "reg")
+            {
+                std::string reg = tokens[3];
+                int regno = 0;
+                if(reg == "A" || reg == "a") regno=0;
+                else if(reg == "X" || reg == "x") regno=1;
+                else if(reg == "Y" || reg == "y") regno=2;
+                else fprintf(stderr, "Invalid register for MapperChangeRoutine: '%s'\n", reg.c_str());
+                dasm.SetSpecialType(address, MapperChangeRoutineWithReg, regno);
+            }
+            else
+                fprintf(stderr, "Invalid parameter type for MapperChangeRoutine: '%s'\n",
+                    type.c_str());
+            continue;
+        }
         
         if(tokens[0] == "JumpTable") { MarkFun1 = &Disassembler::MarkJumpTable; MarkFun2 = &Disassembler::MarkJumpTable; goto MarkTable; }
         if(tokens[0] == "DataTable") { MarkFun1 = &Disassembler::MarkDataTable; MarkFun2 = &Disassembler::MarkDataTable; goto MarkTable; }
@@ -2516,15 +2754,17 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
 static void DisAsm(unsigned char* Buf, unsigned size,
                    FILE* inifile = 0)
 {
-    unsigned NPages = size / 0x4000;
+    unsigned NPages = size / 0x2000;
 
-    printf("ROM is %p, %u bytes, %u pages\n", Buf, size, NPages);
+    printf("ROM is %p, %u bytes, %u 8k-pages\n", Buf, size, NPages);
     
     ROM      = Buf;
     LastPage = NPages-1;
     
-    SetPage(3, LastPage);
-    Mapper2Set(0);
+    SetPage(4, Page0 = 0);
+    SetPage(5, Page1 = 1);
+    SetPage(6, Page2 = LastPage-1);
+    SetPage(7, Page3 = LastPage);
     
     DumpMappings();
     DumpVectors();

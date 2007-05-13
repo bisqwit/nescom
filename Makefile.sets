@@ -5,8 +5,10 @@ CPP=g++
 CXX=g++
 #CXX=remotegcc -soktober -- g++
 
+CPPDEBUG=-g -pipe
+
 # Options for compiling, generally.
-CPPFLAGS=-DVERSION=\"$(VERSION)\" -pipe -g
+CPPFLAGS=-DVERSION=\"$(VERSION)\" $(CPPDEBUG)
 #         -fmessage-length=0
 
 WARNINGS=-Wall \
@@ -34,7 +36,7 @@ CXXOPTS=$(WARNINGS) \
 #	-Weffc++
 
 # Optimization
-OPTIM=-ffast-math -O
+OPTIM=-ffast-math -O1
 #-march=pentiumpro
 
 # Flags.

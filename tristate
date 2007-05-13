@@ -39,8 +39,8 @@ public:
     tristate(bool b) : state(b?1:0) {}
     tristate(unsigned char v) : state(v) {}
     
-    operator bool() const { return state != 0; }
-    tristate operator! () const { return state==0?1:state==1?0:state; }
+    operator bool() const { return state==1; }
+    tristate operator! () const { return state ^ 1; }
     tristate operator== (bool b) const { return state==2 ? 2 : state==b; }
     tristate operator!= (bool b) const { return state==2 ? 2 : state!=b; }
     tristate operator== (tristate b) const
