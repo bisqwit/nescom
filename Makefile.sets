@@ -1,10 +1,3 @@
-CC=gcc
-CPP=g++
-#CXX=g++-2.95
-#CXX=g++-3.3
-CXX=g++
-#CXX=remotegcc -soktober -- g++
-
 CPPDEBUG=-g -pipe
 
 # Options for compiling, generally.
@@ -46,3 +39,16 @@ CXXFLAGS=$(OPTIM) $(CXXOPTS) -fno-default-inline
 
 #LDFLAGS=-pg -ax
 LDFLAGS=-g
+
+#####
+# These options were set by ./configure
+# at Wed Oct 10 13:48:45 EEST 2007
+# for Linux chii 2.6.23-rc8 #1 SMP Mon Oct 1 23:10:38 EEST 2007 x86_64 GNU/Linux
+# To change, run ./configure again.
+#
+CC=gcc
+CPP=cpp
+CXX=g++
+OPTIM += 
+CPPFLAGS +=
+LDFLAGS +=

@@ -246,7 +246,8 @@ enum SpecialTypes
     JumpTableRoutineWithAppendix,
     MapperChangeRoutineWithReg,
     MapperChangeRoutineWithConst,
-    MapperChangeRoutineWithRAM
+    MapperChangeRoutineWithRAM,
+    TerminatedStringRoutine
 };
 
 static int CertaintyOf(CodeLikelihood type)
@@ -424,6 +425,12 @@ struct SimulCPU
         if(pagereg[1].Known()) SetPage(5, Page1 = pagereg[1].Value());
         if(pagereg[2].Known()) SetPage(6, Page2 = pagereg[2].Value());
         if(pagereg[3].Known()) SetPage(7, Page3 = pagereg[3].Value());
+    }
+    
+    int GuessPage45() const
+    {
+        if(pagereg[0].Known()) return pagereg[0].Value() / 2;
+        return -1;
     }
     
     void Invalidate()
@@ -624,12 +631,29 @@ struct PointerTableItem
     bool final;
     int offset;
     
+    int page45;
+    
     std::string nametemplate;
     bool is_default_name;
     
     PointerTableItem()
         : stepping(0), final(true), offset(0),
+          page45(-1),
           is_default_name(true) {}
+
+    void LoadMemMaps() const
+    {
+        rom_to_addr(loptr); // Autoguess mappings
+        
+        if(page45 >= 0)
+        {
+            fprintf(stderr, "Reading pointer value at %X (page=%d)\n", 
+                loptr, page45);
+            
+            SetPage(4, page45*2    );
+            SetPage(5, page45*2 + 1);
+        }
+    }
 };
 
 struct State
@@ -790,7 +814,7 @@ public:
                          + hi.code.Param*256;
         if(address >= 0x8000)
         {
-            MarkAddressMaybeData(addr_to_rom(address), false);
+            MarkAddressMaybeData(addr_to_rom(address), false, lo);
 
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
@@ -807,12 +831,22 @@ public:
     
     bool PossiblyMarkDataTable(State& lo, State& hi)
     {
+      try {
         if(lo.code.Param == hi.code.Param-1)
         {
+            lo.cpu.LoadMap();
+            unsigned address = addr_to_rom(lo.code.Param);
+
+            printf("; Possibly discovered a data table at %X ($%X) (page %d)\n",
+                   address, lo.code.Param,
+                   lo.cpu.GuessPage45());
+
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
-            unsigned address = addr_to_rom(lo.code.Param);
-            MarkDataTable(address+0, address+1, 2, 0);
+            MarkDataTable(address+0, address+1, 2,
+                          0,//extent
+                          0,//offset
+                          lo.cpu.GuessPage45());
             return true;
         }
         
@@ -820,14 +854,22 @@ public:
         && !((hi.code.Param - lo.code.Param)&1)
         && (hi.code.Param - lo.code.Param)/2 < 0x100)
         {
+            lo.cpu.LoadMap();
+            
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
             MarkDataTable(addr_to_rom(lo.code.Param),
                           addr_to_rom(hi.code.Param),
-                          1, (hi.code.Param - lo.code.Param)/2);
+                          1,
+                          (hi.code.Param - lo.code.Param)/2, // extent
+                          0, //offset
+                          lo.cpu.GuessPage45());
             return true;
         }
-        
+      }
+      catch(BadAddressException)
+      {
+      }
         return false;
     }
     
@@ -839,6 +881,8 @@ public:
              ldy   ldx    ldy    ldx
              stx   stx    sty    sty
              sty   sty    stx    stx
+
+            note: xy denote _any_ registers, not just x and y
         */
         
         #define LDreg(code) \
@@ -1059,7 +1103,10 @@ public:
             {
                 state0.meaning_interpreted = true;
                 
-                if(MarkAddressMaybeData(addr_to_rom(code0.Param), true))
+                // Which mappings are active at this instruction?
+                rom_to_addr(romptr); // Autoguess...
+                
+                if(MarkAddressMaybeData(addr_to_rom(code0.Param), true, state0))
                 {
                     found_more_labels = true;
                     return true;
@@ -1162,6 +1209,9 @@ public:
         
         if(code.OpCodeId == 35 || code.OpCodeId == 36) // pha, php
             ++code_indent;
+        
+        if(code.OpCodeId == 42) // rts
+            if(code_indent >= 2)code_indent -= 2;
         
         printf("%s %s", code.Code, code.Prefix);
         switch(code.Mode)
@@ -1641,8 +1691,16 @@ public:
                     {
                         printf("  %02X %02X%*s.word (", ROM[romptr], ROM[romptr+1], -8,":");
                         PrintAddressName(targetptr);
+                        jmp.LoadMemMaps();
                         if(jmp.offset) printf(" %+d", -jmp.offset);
-                        printf(")\n");
+                        
+                        unsigned jmpromptr=0;
+                          try { jmpromptr=addr_to_rom(targetptr); }
+                          catch(const BadAddressException& ) { }
+                        
+                        printf(") ;%X (%X) (%d)\n", targetptr, jmpromptr, jmp.page45);
+                        
+                        //printf(")\n");
                         romptr += 2;
                         continue;
                     }
@@ -1657,19 +1715,57 @@ public:
             
             if(IsDataType(type))
             {
-                printf("\t");
-                PrintRomAddress(romptr);
-                printf("  %*s.byte ", 13,"");
                 unsigned a=0;
-                while(a<16 && (romptr+a) < results.size()
+                
+                std::vector<unsigned char> ok_bytes;
+                ok_bytes.reserve(32);
+                
+                unsigned stride = results[romptr].ArraySize;
+                if(stride <= 1) stride = 16;
+                
+                while(/*a<linelen &&*/ (romptr+a) < results.size()
                     && IsDataType(results[romptr+a].Type)
                     && (a==0 || results[romptr+a].Labels.empty()))
                 {
-                    printf("%s$%02X", a>0?",":"", ROM[romptr+a]);
+                    ok_bytes.push_back(ROM[romptr+a]);
                     ++a;
                 }
-                printf("\n");
-                romptr += a;
+                
+                while(!ok_bytes.empty())
+                {
+                    printf("\t");
+                    PrintRomAddress(romptr);
+                    
+                    unsigned linelen = stride;
+                    while(linelen*2 <= 16) linelen *= 2;
+                    unsigned remain = std::min((size_t)linelen, ok_bytes.size());
+                    if(remain < stride) stride = 1;
+                    
+                    if(stride == 2)
+                    {
+                        printf("  %*s.word ", 13,"");
+                        for(unsigned a=0; a<remain; a += 2)
+                        {
+                            if(a > 0) printf(",");
+                            unsigned val = ok_bytes[a] + ok_bytes[a+1]*256;
+                            printf("$%04X", val);
+                        }
+                        remain &= ~1;
+                    }
+                    else
+                    {
+                        printf("  %*s.byte ", 13,"");
+                        for(unsigned a=0; a<remain; a += 1)
+                        {
+                            if(a > 0) printf(",");
+                            if(a > 0 && stride > 1 && (a%stride)==0) printf(" ");
+                            printf("$%02X", ok_bytes[a]);
+                        }
+                    }
+                    printf("\n");
+                    ok_bytes.erase(ok_bytes.begin(), ok_bytes.begin() + remain);
+                    romptr += remain;
+                }
                 continue;
             }
             
@@ -1680,7 +1776,8 @@ private:
     void MarkSomethingTable(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent,
                             int offset,
                             const std::string& tabletype, bool is_default_name,
-                            void (Disassembler::*Installer) (const PointerTableItem& ))
+                            void (Disassembler::*Installer) (const PointerTableItem& ),
+                            int page45 = -1)
     {
         bool first=true;
         while(first || extent > 0)
@@ -1691,6 +1788,7 @@ private:
             i.stepping = stepping;
             i.final = extent != 0;
             i.offset=offset;
+            i.page45 = page45;
             
             i.nametemplate    = tabletype;
             i.is_default_name = is_default_name;
@@ -1705,20 +1803,34 @@ private:
                 {
                     char Name[512];
                     
-                    sprintf(Name, is_default_name ? "_%s_%04X"   : "%s", tabletype.c_str(), i.loptr);
-                    results[i.loptr].Labels.insert(Name);
-                    
-                    sprintf(Name, is_default_name ? "_%s_%04X+1" : "%s+1", tabletype.c_str(), i.loptr);
-                    results[i.hiptr].Labels.insert(Name);
+                    if(!HasNonShortLabel(i.loptr))
+                    {
+                        sprintf(Name, is_default_name ? "_%s_%04X"   : "%s",
+                            tabletype.c_str(),
+                            i.loptr);
+                        results[i.loptr].Labels.insert(Name);
+                    }
+                    if(!HasNonShortLabel(i.hiptr))
+                    {
+                        sprintf(Name, is_default_name ? "_%s_%04X+1" : "%s+1",
+                            tabletype.c_str(),
+                            i.loptr);
+                        results[i.hiptr].Labels.insert(Name);
+                    }
                 }
                 else
                 {
                     char Name[512];
-                    sprintf(Name, is_default_name ? "_%sLo_%04X" : "%s_lo", tabletype.c_str(), i.loptr);
-                    results[i.loptr].Labels.insert(Name);
-                    
-                    sprintf(Name, is_default_name ? "_%sHi_%04X" : "%s_hi", tabletype.c_str(), i.loptr);
-                    results[i.hiptr].Labels.insert(Name);
+                    if(!HasNonShortLabel(i.loptr))
+                    {
+                        sprintf(Name, is_default_name ? "_%sLo_%04X" : "%s_lo", tabletype.c_str(), i.loptr);
+                        results[i.loptr].Labels.insert(Name);
+                    }
+                    if(!HasNonShortLabel(i.hiptr))
+                    {
+                        sprintf(Name, is_default_name ? "_%sHi_%04X" : "%s_hi", tabletype.c_str(), i.loptr);
+                        results[i.hiptr].Labels.insert(Name);
+                    }
                 }
             }
             
@@ -1729,17 +1841,17 @@ private:
     }
 public:
     #define DeclareMarkingFuncs(funname, installername, defaultname) \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0, int page45=-1) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, defaultname,true, \
-                                   &Disassembler::installername); \
+                                   &Disassembler::installername, page45); \
         } \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0, int page45=-1) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, name,false, \
-                                   &Disassembler::installername); \
+                                   &Disassembler::installername, page45); \
         } \
     
     DeclareMarkingFuncs(MarkJumpTable,     InstallJumpPointerTableEntry, "JumpPointerTable")
@@ -1758,6 +1870,15 @@ private:
     bool IsJumpTableRoutineWithAppendix(const unsigned romptr) const
     {                                                
         return IsSpecialType(romptr, JumpTableRoutineWithAppendix);
+    }    
+    bool IsTerminatedStringRoutine(const unsigned romptr, unsigned& param) const
+    {
+        bool res = IsSpecialType(romptr, TerminatedStringRoutine);
+        if(res)
+        {
+            param = results[romptr].SpecialTypeParam;
+        }
+        return res;
     }    
     bool IsDataTableRoutineWithXY(const unsigned romptr) const
     {    
@@ -1793,11 +1914,19 @@ private:
         return false;
     }
     
-    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed)
+    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, int page45 = -1)
     {
-        bool retval = Mark(rom_address, MaybeData);
+        bool retval = Mark(rom_address, MaybeData, false, page45);
         results[rom_address].is_referred |= was_indexed ? 2 : 4;
         return retval;
+    }
+    
+    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, const State& state)
+    {
+        int page45 = state.cpu.GuessPage45();
+        bool result = MarkAddressMaybeData(rom_address, was_indexed, page45);
+        results[rom_address].cpu.Combine(state.cpu);
+        return result;
     }
     
     void ProcessCode(const unsigned romptr)
@@ -1846,7 +1975,8 @@ private:
                         unsigned param_romptr = addr_to_rom(code.Param);
                         
                         if(code.Mode != Ax && code.Mode != Ay)
-                        MarkAddressMaybeData(param_romptr, code.Mode==Ax || code.Mode==Ay);
+                        MarkAddressMaybeData(param_romptr, code.Mode==Ax || code.Mode==Ay,
+                            state);
                     }
                 }
                 break;
@@ -2034,12 +2164,28 @@ private:
                     }
 
                     Mark(Branch, CertainlyCode, true);
+                    results[Branch].cpu.Combine(state.cpu);
                     
                     if(IsJumpTableRoutineWithAppendix(Branch))
                     {
                         MarkJumpTable(Next+0, Next+1, 2, 0);
                         break;
                     }
+                    
+                    { unsigned param;
+                    if(IsTerminatedStringRoutine(Branch, param))
+                    {
+                        int width      = param / 256;
+                        int terminator = param % 256;
+                        
+                        Mark(Next, CertainlyData);
+                        
+                        unsigned c = Next;
+                        while(ROM[c] != terminator) { results[c].ArraySize = width; c += width; }
+                        c += 1; // skip terminator
+                        Mark(c, CertainlyCode);
+                    } }
+                    
                     if(IsDataTableRoutineWithXY(Branch))
                     {
                         if(state.cpu.X.Known() && state.cpu.Y.Known())
@@ -2048,7 +2194,7 @@ private:
                             if(addr >= 0x8000)
                             {
                                 unsigned jt = addr_to_rom(addr);
-                                MarkAddressMaybeData(jt, true);
+                                MarkAddressMaybeData(jt, true, state);
                                 //printf("At jt %04X: jumptable=%04X\n", romptr, jt);
                                 
                                 int x_at = state.cpu.X.GetDefineLocation();
@@ -2082,6 +2228,7 @@ private:
                 }
                 
                 Mark(Next, MaybeCode); // there's no guarantee that the jsr will return
+                results[Next].cpu.Combine(state.cpu);
                 state.cpu.Invalidate(); // a function may change any registers
                 break;
             }
@@ -2400,7 +2547,9 @@ private:
     }
 
 public:
-    bool Mark(unsigned romptr, CodeLikelihood type, bool is_referred = false)
+    bool Mark(unsigned romptr, CodeLikelihood type,
+              bool is_referred = false,
+              int page45 = -1)
     {
         int certainty = CertaintyOf(type);
         
@@ -2419,6 +2568,13 @@ public:
             */
             results[romptr].Type = type;
             
+            // if the referrer knows some mappings, copy them to the referred
+            if(page45 >= 0)
+            {
+                results[romptr].cpu.SetPageReg(0, page45*2    , true);
+                results[romptr].cpu.SetPageReg(1, page45*2 + 1, true);
+            }
+            
             if(is_referred) results[romptr].is_referred |= 1;
         }
         
@@ -2433,8 +2589,14 @@ public:
         }
         return false;
     }
+    void SetArraySize(unsigned romptr, unsigned size)
+    {
+        results[romptr].ArraySize = size;
+    }
     
-    bool Mark(unsigned romptr, const std::string& name, CodeLikelihood type, bool is_referred = false)
+    bool Mark(unsigned romptr, const std::string& name, CodeLikelihood type,
+              bool is_referred = false,
+              int page45 = -1)
     {
         //printf("Mark %05X, %d, name %s\n", romptr,type, name.c_str());
 
@@ -2443,13 +2605,18 @@ public:
             std::fprintf(stderr, "Error: romptr=%X, results.size()=%X\n",
                 romptr, (unsigned)results.size());
         }
-        results[romptr].Labels.insert(name);
-        return Mark(romptr, type, is_referred);
+        
+        if(!HasNonShortLabel(romptr)) /* FIXME: do this check only if the name was autogenerated */
+        {
+            results[romptr].Labels.insert(name);
+        }
+        
+        return Mark(romptr, type, is_referred, page45);
     }
 
     unsigned ReadPointerValueAt(const PointerTableItem& i) const
     {
-        rom_to_addr(i.loptr); // Autoguess mappings
+        i.LoadMemMaps();
         
         unsigned ptrlo = ROM[i.loptr];
         unsigned ptrhi = ROM[i.hiptr];
@@ -2457,13 +2624,16 @@ public:
         return addr + i.offset;
     }
     
-    void InstallSomethingPointerTableEntry(const PointerTableItem& i,
-                                           CodeLikelihood UsedPtrType,
-                                           CodeLikelihood UnusedPtrType,
-                                           const std::string& ptrtypename,
-                                           void (Disassembler::*Installer)
-                                              (unsigned romptr, const std::string& name)
-                                         )
+    void InstallSomethingPointerTableEntry
+        (const PointerTableItem& i,
+         CodeLikelihood UsedPtrType,
+         CodeLikelihood UnusedPtrType,
+         const std::string& ptrtypename,
+         void (Disassembler::*Installer)
+               (unsigned romptr,
+                const std::string& name,
+                const PointerTableItem& i)
+        )
     {
         /* i informs about the address that points into this table entry */
         
@@ -2491,7 +2661,7 @@ public:
             unsigned romptr = addr_to_rom(pointertarget);
             char Buf[512];
             sprintf(Buf, "_%04X", romptr);
-            (this->*Installer)(romptr, ptrtypename + Buf);
+            (this->*Installer)(romptr, ptrtypename + Buf, i);
         }
         catch(const BadAddressException& )
         {
@@ -2520,7 +2690,8 @@ public:
     }
     
     void InstallJumpPointer(unsigned romptr) { Mark(romptr, CertainlyCode, true); }
-    void InstallJumpPointer(unsigned romptr, const std::string& name) { Mark(romptr, name, CertainlyCode, true); }
+    void InstallJumpPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
+        { Mark(romptr, name, CertainlyCode, true, i.page45); }
     void InstallJumpPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "JumpTableEntry" : i.nametemplate;
@@ -2528,7 +2699,8 @@ public:
     }
     
     void InstallDataPointer(unsigned romptr) { Mark(romptr, MaybeData, true); }
-    void InstallDataPointer(unsigned romptr, const std::string& name) { Mark(romptr, name, MaybeData, true); }
+    void InstallDataPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
+        { Mark(romptr, name, MaybeData, true, i.page45); }
     void InstallDataPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "DataTableEntry" : i.nametemplate;
@@ -2537,7 +2709,8 @@ public:
 
 
     void InstallJumpJumpPointer(unsigned romptr) { MarkJumpTable(romptr+0,romptr+1,2,0, +1); }
-    void InstallJumpJumpPointer(unsigned romptr, const std::string& name) { MarkJumpTable(romptr+0,romptr+1,2,0, name, +1); }
+    void InstallJumpJumpPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
+        { MarkJumpTable(romptr+0,romptr+1,2,0, name, +1, i.page45); }
     void InstallJumpJumpPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "JumpJumpTableEntry" : i.nametemplate;
@@ -2545,7 +2718,8 @@ public:
     }
     
     void InstallDataDataPointer(unsigned romptr) { MarkDataTable(romptr+0,romptr+1,2,0); }
-    void InstallDataDataPointer(unsigned romptr, const std::string& name) { MarkDataTable(romptr+0,romptr+1,2,0, name); }
+    void InstallDataDataPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
+        { MarkDataTable(romptr+0,romptr+1,2,0, name, 0, i.page45); }
     void InstallDataDataPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "DataDataTableEntry" : i.nametemplate;
@@ -2643,8 +2817,8 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         
         CodeLikelihood type = Unknown;
         
-        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset);
-        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset);
+        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset,int page45);
+        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,int page45);
         
         if(tokens[0] == "CertainlyCode") { type = CertainlyCode; goto MarkCall; }
         if(tokens[0] == "MaybeCode")     { type = MaybeCode; goto MarkCall; }
@@ -2663,6 +2837,18 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             if(tokens.size() != 2) goto SyntaxError;
             int address = ParseInt(tokens[1]);
             dasm.SetSpecialType(address, DataTableRoutineWithXY);
+            continue;
+        }
+        if(tokens[0] == "TerminatedStringRoutine")
+        {
+            if(tokens.size() != 4) goto SyntaxError;
+            int address    = ParseInt(tokens[1]);
+            int width      = ParseInt(tokens[2]);
+            int terminator = ParseInt(tokens[3]);
+            
+            int param = width*256 + terminator;
+            
+            dasm.SetSpecialType(address, TerminatedStringRoutine, param);
             continue;
         }
         if(tokens[0] == "JumpTableRoutineWithAppendix")
@@ -2713,9 +2899,14 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         if(false)
         {
         MarkCall: ;
+            // <type> <address> [name] [width]
             int address = ParseInt(tokens[1]);
-            if(tokens.size() == 3)
+            if(tokens.size() >= 3)
+            {
                 dasm.Mark(address, tokens[2], type);
+                if(tokens.size() == 4)
+                    dasm.SetArraySize(address, ParseInt(tokens[3]));
+            }
             else if(tokens.size() == 2)
                 dasm.Mark(address, type);
             else goto SyntaxError;
@@ -2724,6 +2915,8 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         
         if(false)
         {
+            // name loptr hiptr step [length [name [offset [page45]]]]
+            
         MarkTable:  
             if(tokens.size() < 5) goto SyntaxError;
             int lo = ParseInt(tokens[1]);
@@ -2732,11 +2925,13 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             int ext  = ParseInt(tokens[4]);
             //fprintf(stderr, "lo=%X, hi=%X, step=%u, ext=%u\n",lo,hi,step,ext);
             if(tokens.size() == 5)
-                (dasm.*MarkFun1)(lo,hi,step,ext, 0);
+                (dasm.*MarkFun1)(lo,hi,step,ext, 0,-1);
             else if(tokens.size() == 6)
-                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], 0);
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], 0,-1);
             else if(tokens.size() == 7)
-                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]));
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), -1);
+            else if(tokens.size() == 8)
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), ParseInt(tokens[7]));
             else goto SyntaxError;
             continue;
         }

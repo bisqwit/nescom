@@ -238,7 +238,8 @@ Jul 26 2006; 1.1.0 has now a linker, and an example program.<br>
 Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversions.<br>
 Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.<br>
 Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.<br>
-May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.
+May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.<br>
+Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.
 
 ", 'bugs:1. Known bugs' => "
 

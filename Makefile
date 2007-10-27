@@ -19,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=1.1.3.1
+VERSION=1.1.4
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -45,7 +45,13 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           binpacker.hh binpacker.tcc \
           logfiles.hh \
           rangeset.hh rangeset.tcc range.hh \
-          miscfun.hh miscfun.tcc
+          miscfun.hh miscfun.tcc \
+          \
+          clever/kage.ini \
+          clever/cv2u.ini \
+          clever/cv.ini \
+          clever/solokey.ini \
+          clever/lunarball.ini
 
 PREFIX=/usr/local
 BINDIR=$(PREFIX)/bin
