@@ -1,5 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <deque>
@@ -674,8 +676,9 @@ struct State
     Disassembly code;
     
     unsigned referred_address;
+    int      referred_offset;  // for example, offs=1 when code says $CFDA but refaddr is $CFDB
 
-    enum reftype { none=0, lo=1, hi=2 };
+    enum reftype { none=0, lo=1, hi=2, times64=3 };
     
     struct {
         reftype referred_byte    : 2;
@@ -697,6 +700,7 @@ public:
         FirstJumpFrom(-1),
         LastJumpFrom(-1),
         JumpsTo(-1),
+        referred_address(0), referred_offset(0),
         referred_byte(none),
         meaning_interpreted(false),
         barrier(false),
@@ -808,21 +812,47 @@ public:
         if(DiscoverIndexedAddresses()) goto Retry;
     }
     
-    bool PossiblyMarkImmediatePointer(State& lo, State& hi)
+    bool PossiblyMarkImmediatePointer(State& lo, State& hi, int refoffs=0, bool data=true)
     {
         unsigned address = lo.code.Param
-                         + hi.code.Param*256;
+                         + hi.code.Param*256
+                         + refoffs;
+        
         if(address >= 0x8000)
         {
-            MarkAddressMaybeData(addr_to_rom(address), false, lo);
+            if(data)
+                MarkAddressMaybeData(addr_to_rom(address), false, lo);
+            else
+                MarkAddressMaybeCode(addr_to_rom(address), lo);
 
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
 
             lo.referred_address = address;
             lo.referred_byte    = State::lo;
+            lo.referred_offset  = refoffs;
+            
             hi.referred_address = address;
             hi.referred_byte    = State::hi;
+            hi.referred_offset  = refoffs;
+            
+            return true;
+        }
+        return false;
+    }
+    
+    bool PossiblyMarkDPCMpointer(State& lo)
+    {
+        unsigned address = 0xC000 + lo.code.Param * 64;
+        if(address >= 0x8000)
+        {
+            MarkAddressMaybeData(addr_to_rom(address), false, lo);
+
+            lo.meaning_interpreted = true;
+
+            lo.referred_address = address;
+            lo.referred_byte    = State::times64;
+            lo.referred_offset  = 0xC000;
             
             return true;
         }
@@ -870,6 +900,36 @@ public:
       catch(BadAddressException)
       {
       }
+        return false;
+    }
+    
+    bool TestDPCMaddressPoke(State* States[4])
+    {
+        #define LDreg(code) \
+            (code.Mode != Im && code.Mode != Ay \
+                ? 0 \
+                : code.OpCodeId == 29 ? 'A' \
+                : code.OpCodeId == 31 ? 'X' \
+                : code.OpCodeId == 32 ? 'Y'  \
+                : 0 )
+        #define STreg(code) \
+            (  code.OpCodeId == 44 ? 'A' \
+             : code.OpCodeId == 45 ? 'X' \
+             : code.OpCodeId == 46 ? 'Y' \
+             : 0 )
+        
+        char L0 = LDreg(States[0]->code), S0 = STreg(States[0]->code);
+        char L1 = LDreg(States[1]->code), S1 = STreg(States[1]->code);
+        
+        #undef LDreg
+        #undef STreg
+        
+        if(L0 != 0 && L0 == S1 && States[1]->code.Mode  == Ab
+                               && States[1]->code.Param == 0x4012
+                               && !States[0]->meaning_interpreted)
+        {
+            return PossiblyMarkDPCMpointer(*States[0]);
+        }
         return false;
     }
     
@@ -940,16 +1000,10 @@ public:
         }
         else if(L0 && L2)
         {
-            if(L0 == L2 && L0 != S1) return false; // first reg was not saved
             if(L0 == S1 && L2 == S3)
             {
                 Load0 = 0; Store0 = 1;
                 Load1 = 2; Store1 = 3;
-            }
-            else if(L0 == S3 && L2 == S1)
-            {
-                Load0 = 0; Store0 = 3;
-                Load1 = 2; Store1 = 1;
             }
             else return false; // Wrong types of stores
         }
@@ -991,6 +1045,37 @@ public:
             default:;
         }
         return true;
+    }
+    
+    bool TestCodeAddressPush(State* States[4])
+    {
+        /*
+           Possibilities (read up to down):
+             lda
+             pha
+             lda
+             pha
+           Not dealt with:
+             txa    tya   pha    pha
+             pha    pha   txa    tya
+             tya    txa   pha    pha
+             pha    pha
+        */
+        
+        if(States[0]->code.Mode == Im && States[0]->code.OpCodeId == 29  // LDA
+        && States[2]->code.Mode == Im && States[2]->code.OpCodeId == 29  // LDA
+        && States[1]->code.OpCodeId == 35  // PHA
+        && States[3]->code.OpCodeId == 35  // PHA
+          )
+        {
+            if(States[0]->meaning_interpreted) return false;
+            if(States[2]->meaning_interpreted) return false;
+        
+            return PossiblyMarkImmediatePointer(*States[2], *States[0],
+                                                1, /* RTS pushes always have an offset of 1 */
+                                                false);
+        }
+        return false;
     }
     
     bool TestLoadTableXY(State* States[4])
@@ -1065,12 +1150,22 @@ public:
             
             State* States[4] = { &state0,&state1,&state2,&state3 };
             
+            if(TestDPCMaddressPoke(States))
+            {
+                found_more_labels = true;
+                romptr = romptr2;
+                continue;
+            }
+            
             if(TestDataAddressPoke(States))
                 { Success:
                     found_more_labels = true;
                     romptr=romptr4;
                     continue;
                 }
+
+            if(TestCodeAddressPush(States)) goto Success;
+
             if(TestLoadTableXY(States)) { goto Success; }
             
             goto Ignore;
@@ -1226,13 +1321,24 @@ public:
                     case State::lo:
                     {
                         printf("<");
+                        if(state.referred_offset != 0) printf("(");
                         PrintAddressName(state.referred_address);
+                        if(state.referred_offset != 0) printf(" - %d)", state.referred_offset);
                         break;
                     }
                     case State::hi:
                     {
                         printf(">");
+                        if(state.referred_offset != 0) printf("(");
                         PrintAddressName(state.referred_address);
+                        if(state.referred_offset != 0) printf(" - %d)", state.referred_offset);
+                        break;
+                    }
+                    case State::times64:
+                    {
+                        printf("((");
+                        PrintAddressName(state.referred_address);
+                        printf(" - $%X) / 64)", state.referred_offset);
                         break;
                     }
                 }
@@ -1929,6 +2035,13 @@ private:
         return result;
     }
     
+    bool MarkAddressMaybeCode(unsigned rom_address, const State& state)
+    {
+        bool result = Mark(rom_address, MaybeCode, true, state.cpu.GuessPage45());
+        results[rom_address].cpu.Combine(state.cpu);
+        return result;
+    }
+    
     void ProcessCode(const unsigned romptr)
     {
         State& state = results[romptr];
@@ -2201,12 +2314,14 @@ private:
                                 if(x_at >= 0)
                                     { results[x_at].referred_address = addr;
                                       results[x_at].referred_byte = State::lo;
+                                      results[x_at].referred_offset = 0;
                                       results[x_at].meaning_interpreted=true;
                                     }
                                 int y_at = state.cpu.Y.GetDefineLocation();
                                 if(y_at >= 0)
                                     { results[y_at].referred_address = addr;
                                       results[y_at].referred_byte = State::hi;
+                                      results[x_at].referred_offset = 0;
                                       results[y_at].meaning_interpreted=true;
                                     }
                            }
