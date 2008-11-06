@@ -10,6 +10,7 @@
 
 #include <cstdlib>
 #include <string>
+#include <cstring>
 
 #if SUPPORT_FORK
 #include <sys/wait.h>

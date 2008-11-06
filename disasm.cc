@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <cstring>
 
 /* This program disassembles an IPS file. */
 
