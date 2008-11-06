@@ -4,7 +4,7 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 3.0.5
+# makediff.php version 3.0.6
 
 # Copyright (C) 2000,2002 Bisqwit (http://bisqwit.iki.fi/)
 
@@ -39,10 +39,10 @@ if(strlen($argv[2]))
 function calcversion($versionstring)
 {
   $k = '.'.str_replace('.', '..', $versionstring).'.';
-  $k = ereg_replace('([^0-9])([0-9][0-9][0-9][0-9][^0-9])', '\1-\2', $k);
-  $k = ereg_replace('([^0-9])([0-9][0-9][0-9][^0-9])', '\1--\2', $k);
-  $k = ereg_replace('([^0-9])([0-9][0-9][^0-9])', '\1---\2', $k);
-  $k = ereg_replace('([^0-9])([0-9][^0-9])', '\1----\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][0-9a-z][0-9a-z][0-9a-z][^0-9a-z])', '\1-\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][0-9a-z][0-9a-z][^0-9a-z])', '\1--\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][0-9a-z][^0-9a-z])', '\1---\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][^0-9a-z])', '\1----\2', $k);
   $k = str_replace('.', '', $k);
   $k = str_pad($k, 6*5, '-');
   # Reverse:
