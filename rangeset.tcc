@@ -1,125 +1,84 @@
-#include <list>
-
 #include "rangeset.hh"
 
-template<typename Key>
-void rangeset<Key>::erase(const Key& lo, const Key& up)
+template<typename Key,typename Allocator>
+const typename rangeset<Key,Allocator>::const_iterator
+    rangeset<Key,Allocator>::ConstructIterator(typename Cont::const_iterator i) const
 {
-    range newrange;
-    newrange.lower = lo;
-    newrange.upper = up;
-    
-    typedef range tmpelem;
-    typedef std::list<tmpelem> tmplist;
-    tmplist newitems;
-    
-    /* FIXME: This is slower than it needs to be */
-    for(iterator b,a=data.begin(); a!=data.end(); a=b)
+    const_iterator tmp(data);
+    while(i != data.end() && i->second.is_nil()) ++i;
+    tmp.i = i;
+    tmp.Reconstruct();
+    return tmp;
+}
+template<typename Key,typename Allocator>
+void rangeset<Key,Allocator>::const_iterator::Reconstruct()
+{
+    if(i != data.end())
     {
-        b = a; ++b;
-        if(a->coincides(newrange))
+        rangetype<Key>::lower = i->first;
+        typename Cont::const_iterator j = i;
+        if(++j != data.end())
+            rangetype<Key>::upper = j->first;
+        else
+            rangetype<Key>::upper = rangetype<Key>::lower;
+
+        if(i->second.is_nil())
         {
-            if(a->lower < lo)
-            {
-                range lowrange;
-                lowrange.lower = a->lower;
-                lowrange.upper = lo;
-                newitems.push_front(lowrange);
-            }
-            if(a->upper > up)
-            {
-                range uprange;
-                uprange.lower = up;
-                uprange.upper = a->upper;
-                newitems.push_front(uprange);
-            }
-            data.erase(a);
-        }
-    }
-    for(typename tmplist::const_iterator
-            i = newitems.begin();
-            i != newitems.end();
-            ++i)
-    {
-        data.insert(*i);
-    }
-}
-
-template<typename Key>
-void rangeset<Key>::erase(const Key& value)
-{
-    erase(value, value+1);
-}
-
-template<typename Key>
-void rangeset<Key>::set(const Key& lo, const Key& up)
-{
-    erase(lo, up);
-    
-    /* FIXME: This is way slower than it needs to be */
-    range newrange;
-    newrange.lower = lo;
-    newrange.upper = up;
-    data.insert(newrange);
-}
-
-template<typename Key>
-void rangeset<Key>::insert(const Key& value)
-{
-    set(value, value+1);
-}
-
-
-
-template<typename Key>
-typename rangeset<Key>::const_iterator
-    rangeset<Key>::find(const Key& v) const
-{
-    /* FIXME: Should use lower_bound, upper_bound or something */
-    
-    for(const_iterator a=data.begin(); a!=data.end(); ++a)
-        if(a->contains(v)) return a;
-    return data.end();
-}
-
-#if 0
-template<typename Key>
-template<typename Listtype>
-void rangeset<Key>::find_all_coinciding
-   (const Key& lo, const Key& up,
-    Listtype& target)
-{
-    range newrange;
-    newrange.lower = lo;
-    newrange.upper = up;
-    
-    target.clear();
-    
-    for(const_iterator a=data.begin(); a!=data.end(); ++a)
-        if(a->coincides(newrange))
-            target.push_back(a);
-}
-#endif
-
-template<typename Key>
-void rangeset<Key>::compact()
-{
-Retry:
-    for(iterator b,a=data.begin(); a!=data.end(); a=b)
-    {
-        b=a; ++b;
-        
-        // If the next one is followup to this one
-        if(b->lower == a->upper)
-        {
-            range newrange;
-            newrange.lower = a->lower;
-            newrange.upper = b->upper;
-            
-            data.insert(newrange);
-            data.erase(a);
-            data.erase(b);
-            goto Retry;
+            fprintf(stderr, "rangeset: internal error\n");
         }
     }
 }
+template<typename Key,typename Allocator>
+typename rangeset<Key,Allocator>::const_iterator& rangeset<Key,Allocator>::const_iterator::operator++ ()
+{
+    /* Note: The last node before end() is always nil. */
+    while(i != data.end())
+    {
+        ++i;
+        if(!i->second.is_nil())break;
+    }
+    Reconstruct();
+    return *this;
+}
+template<typename Key,typename Allocator>
+typename rangeset<Key,Allocator>::const_iterator& rangeset<Key,Allocator>::const_iterator::operator-- ()
+{
+    /* Note: The first node can not be nil. */
+    while(i != data.begin())
+    {
+        --i;
+        if(!i->second.is_nil())break;
+    }
+    Reconstruct();
+    return *this;
+}
+
+template<typename Key,typename Allocator>
+rangeset<Key,Allocator> rangeset<Key,Allocator>::intersect(const rangeset<Key,Allocator>& b) const
+{
+    rangeset<Key,Allocator> result;
+    const_iterator ai = begin();
+    const_iterator bi = b.begin();
+
+    for(;;)
+    {
+        if(ai == end()) break;
+        if(bi == b.end()) break;
+
+        if(ai->upper <= bi->lower) { ++ai; continue; }
+        if(bi->upper <= ai->lower) { ++bi; continue; }
+
+        rangetype<Key> intersection = ai->intersect(bi);
+        if(!intersection.empty())
+            result.set(intersection.lower, intersection.upper);
+
+        if(ai->upper < bi->upper)         // A is smaller
+            ++ai;
+        else if(ai->upper == bi->upper)   // equal
+            { ++ai; ++bi; }
+        else                              // B is smaller
+            ++bi;
+    }
+    return result;
+}
+

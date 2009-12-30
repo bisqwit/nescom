@@ -4,7 +4,7 @@
 # The same program is used in many different projects to create
 # the README.html file from progdesc.php.
 #
-# docmaker.php version 1.1.0
+# docmaker.php version 1.2.0
 
 # Copyright (C) 2000,2004 Bisqwit (http://iki.fi/bisqwit/)
 
@@ -82,6 +82,18 @@ $k = '
    is at <a href="'.htmlspecialchars($url).'">'.htmlspecialchars($url).'</a>.<br>
    Check there for new versions.
 ';
+if(isset($git))
+{
+  $k .=
+    '<p>'.
+    'Additionally, the most recent source code (bleeding edge) for '.htmlspecialchars($progname).
+    ' can also be downloaded by cloning the Git repository'.
+    ' by:<ul style="margin-left:3em;margin-top:0px">'.
+    '<li><code> git clone <a href="'.htmlspecialchars($git).'">'.htmlspecialchars($git).'</a></code></li>'.
+    '<li><code> git checkout origin/release -b release</code></li>'.
+    '<li><code> git checkout origin/master  -b master</code></li>'.
+    '</ul></p>';
+}
 $text['download:99999. Downloading'] = $k;
 
 include $docformatfn;

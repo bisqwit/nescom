@@ -1,66 +1,89 @@
 #ifndef bqtRangeSetHH
 #define bqtRangeSetHH
 
-#include <set>
 #include "range.hh"
 
 /***************
  *
  * The idea of a rangeset is that you don't need to have
- * a std::vector<bool> of 2 gigabytes size or a std::set<>
- * with 1000000 elements.
- * It is especially ideal for structures that have large
- * consequent blocks of similar setting.
+ * a vector<bool> of a gigabyte size.
  *
- * Another idea of implementing this would be to store changepoints
- * only.
- * i.e., for a rangeset that has 0..5, 12..15 and 20..25,
- * you would have a set with 0,12,20 and another with 5,15,25.
+ * Implemented using changepoints.
  */
-template<typename Key>
+template<typename Key, typename Allocator = std::allocator<Key> >
 class rangeset
 {
-    typedef rangetype<Key> range;
-    typedef std::set<rangetype<Key> > Cont;
+    class Valueholder
+    {
+        bool nil;
+    public:
+        Valueholder(bool set=false): nil(!set) {}
+        void set() { nil=false; }
+        void clear() { nil=true; }
+        bool is_nil() const { return nil; }
+        bool operator==(const Valueholder& b) const { return nil==b.nil; }
+        bool operator!=(const Valueholder& b) const { return nil!=b.nil; }
+    };
+    typedef rangecollection<Key, Valueholder, Allocator> Cont;
     Cont data;
-public:
-    typedef typename Cont::const_iterator const_iterator;
-    typedef typename Cont::iterator iterator;
 
+public:
+    /* Iterates over _set_ ranges */
+    struct const_iterator: public rangetype<Key>
+    {
+        const const_iterator* operator-> () const { return this; }
+        typename Cont::const_iterator i;
+    public:
+        const_iterator(const Cont& c): i(), data(c) { }
+        const_iterator(const const_iterator& b) : i(b.i), data(b.data) { }
+
+        bool operator==(const const_iterator& b) const { return i == b.i; }
+        bool operator!=(const const_iterator& b) const { return !operator==(b); }
+        const_iterator& operator++ ();
+        const_iterator& operator-- ();
+
+    private:
+        const Cont& data;
+        void Reconstruct();
+        friend class rangeset;
+    };
+private:
+    const const_iterator ConstructIterator(typename Cont::const_iterator i) const;
+
+public:
     rangeset() : data() {}
-    
+
     /* Erase everything between the given range */
-    void erase(const Key& lo, const Key& up);
-    
-    /* Erase single value */
-    void erase(const Key& value);
-    
-    /* Set a range */
-    void set(const Key& lo, const Key& up);
-    
-    /* Set a single value */
-    void insert(const Key& value);
-    
+    void erase(const Key& lo, const Key& up) { data.erase(lo, up); }
+
+    /* Erase a single value */
+    void erase(const Key& lo) { data.erase(lo, lo+1); }
+
+    void erase_before(const Key& lo) { data.erase_before(lo); }
+    void erase_after(const Key& up) { data.erase_after(up); }
+
+    /* Modify the given range to have the given value */
+    void set(const Key& lo, const Key& up) { data.set(lo, up, true); }
+
+    void insert(const Key& pos) { set(pos, pos+1); }
+
+    rangeset intersect(const rangeset& b) const;
+
     /* Find the range that has this value */
-    const_iterator find(const Key& lo) const;
-    
+    const_iterator find(const Key& v) const { return ConstructIterator(data.find(v)); }
+
     /* Standard functions */
-    const_iterator begin() const { return data.begin(); }
-    const_iterator end() const { return data.end(); }
+    const_iterator begin() const { return ConstructIterator(data.begin()); }
+    const_iterator end() const { return ConstructIterator(data.end()); }
+    const_iterator lower_bound(const Key& v) const { return ConstructIterator(data.lower_bound(v)); }
+    const_iterator upper_bound(const Key& v) const { return ConstructIterator(data.upper_bound(v)); }
     unsigned size() const { return data.size(); }
     bool empty() const { return data.empty(); }
     void clear() { data.clear(); }
-    
-#if 0
-    template<typename Listtype>
-    void find_all_coinciding(const Key& lo, const Key& up,
-                             Listtype& target);
-#endif
-    
-    /* Optimization function */
-    void compact();
-    
-    // default copy cons. and assign-op. are fine
+
+    bool operator==(const rangeset& b) const { return data == b.data; }
+    bool operator!=(const rangeset& b) const { return !operator==(b); }
+
 };
 
 #include "rangeset.tcc"

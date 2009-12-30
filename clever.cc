@@ -1796,7 +1796,12 @@ public:
                     if(jmp.hiptr == jmp.loptr+1)
                     {
                         printf("  %02X %02X%*s.word (", ROM[romptr], ROM[romptr+1], -8,":");
-                        PrintAddressName(targetptr);
+                        
+                        if(targetptr < 0x800)
+                            PrintRAMaddress(targetptr, 2);
+                        else
+                            PrintAddressName(targetptr);
+                        
                         jmp.LoadMemMaps();
                         if(jmp.offset) printf(" %+d", -jmp.offset);
                         

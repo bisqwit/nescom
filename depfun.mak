@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.6.0
+# depfun.mak version 1.6.1
 #
 # Required vars:
 #
@@ -55,54 +55,78 @@ depend dep: .depend
 
 -include .depend
 
-git_rm: ;
-	@- git rm -fr --cached '*' &> /dev/null
-
-git_add: ${ARCHFILES} ;
-	git add --ignore-errors ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile
-	@if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} > README.html; git add docmaker.php README.html; fi
-	@if [ -f makediff.php ]; then git add makediff.php; fi
-
-git_push_branch: ;
-	sed 's@^ref: refs/heads/@@' < .git/HEAD > .git/PUSHED_HEAD
-
-git_pop_branch: ;
-	git checkout `cat .git/PUSHED_HEAD`
-	
 git_release: ${ARCHFILES} ;
-	git commit         -a -m 'Release version ${VERSION} (dev)' || \
-	git commit --amend -a -m 'Release version ${VERSION} (dev)' # commit in dev brach
-	sed 's@^ref: refs/heads/@@' < .git/HEAD > .git/PUSHED_HEAD
+	# Create the release commit
+	git commit --allow-empty -a -m 'Release version ${VERSION} (dev)' # commit in dev brach
+	git rev-parse HEAD > .git/PUSHED_HEAD
 	git checkout release || git checkout -b release
-	 git merge --no-commit `cat .git/PUSHED_HEAD`
+	 #
+	 # Set the cache & index to exact copy of the original branch
+	 #
 	 git rm -fr --cached '*' &> /dev/null
-	 git add --ignore-errors ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile
+	 git checkout PUSHED_HEAD .
+	 #
+	 # Limit the index to those files we publish
+	 #
+	 git rm -fr --cached '*' &> /dev/null
+	 git add -f --ignore-errors ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile
 	 @if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} > README.html; git add docmaker.php README.html; fi
 	 @if [ -f makediff.php ]; then git add makediff.php; fi
-	 git commit -a -m 'Release version ${VERSION}' # commit in release
+	 #
+	 # Create a merge commit
+	 #
+	 cp .git/PUSHED_HEAD .git/MERGE_HEAD
+	 git commit -m 'Release version ${VERSION}' # commit in release
+	 #
+	 # Create the archive
+	 #
 	 @- mkdir ${ARCHDIR} 2>/dev/null
-	 git-archive --format=tar --prefix=${ARCHNAME}/ HEAD > ${ARCHDIR}${ARCHNAME}.tar
-	git checkout `cat .git/PUSHED_HEAD`
+	 git archive --format=tar --prefix=${ARCHNAME}/ HEAD > ${ARCHDIR}${ARCHNAME}.tar
+	# Return to the original branch
+	git checkout -f $$(cd .git/refs/heads;grep -l `cat ../../PUSHED_HEAD` * || echo PUSHED_HEAD)
+	git update-server-info
 	@make arch_finish_pak
 	@make omabin_link${DEPFUN_OMABIN}
 
 git_test_release: ${ARCHFILES}
+	# Create the testing commit
 	git commit --allow-empty -a -m 'Test release ${VERSION} (dev)' # commit in dev branch
-	git-update-server-info
-	sed 's@^ref: refs/heads/@@' < .git/HEAD > .git/PUSHED_HEAD
+	git rev-parse HEAD > .git/PUSHED_HEAD
 	git checkout release || git checkout -b release
-	 grep refs/heads/release .git/info/refs | sed 's/	.*//' > .git/RELEASE_HEAD
-	 git merge --no-commit `cat .git/PUSHED_HEAD`
+	 # 
+	 # Backup the HEAD in release branch
+	 #
+	 git rev-parse release > .git/RELEASE_HEAD
+	 #
+	 # Set the cache & index to exact copy of the original branch
+	 #
 	 git rm -fr --cached '*' &> /dev/null
-	 git add --ignore-errors ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile
+	 git checkout PUSHED_HEAD .
+	 #
+	 # Limit the index to those files we publish
+	 #
+	 git rm -fr --cached '*' &> /dev/null
+	 git add -f --ignore-errors ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile
 	 @if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} > README.html; git add docmaker.php README.html; fi
 	 @if [ -f makediff.php ]; then git add makediff.php; fi
-	 git commit -a -m 'Test release' # commit in release
+	 #
+	 # Create a merge commit
+	 #
+	 cp .git/PUSHED_HEAD .git/MERGE_HEAD
+	 git commit -m 'Test release' # commit in release
+	 #
+	 # Create the testing directory
+	 #
 	 rm -rf test_release
-	 git-archive --format=tar --prefix=test_release/ HEAD | tar xvf - | sed 's/^/	/'
-	 git reset --hard `cat .git/RELEASE_HEAD`         # undo release AND dev release
-	git checkout `cat .git/PUSHED_HEAD`
-	git-gc --quiet
+	 git archive --format=tar --prefix=test_release/ HEAD | tar xvf - | sed 's/^/	/'
+	 #
+	 # Reset the release branch to its previous state
+	 #
+	 git reset --hard RELEASE_HEAD
+	# Return to the original branch
+	git checkout -f $$(cd .git/refs/heads;grep -l `cat ../../PUSHED_HEAD` * || echo PUSHED_HEAD)
+	git update-server-info
+	git gc --quiet
 	@echo
 	@echo ----------------------------------------------------------------------
 	@echo 'Would-be release extracted to test_release/ -- go ahead and try it.'

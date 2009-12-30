@@ -23,10 +23,7 @@ NES that is already accomplished for SNES by
 
 ", 'linker:1. Linker' => "
 
-This package also contains a linker.<br>
-See <a href=\"http://bisqwit.iki.fi/src/nescom-demo/\"
->http://bisqwit.iki.fi/src/nescom-demo/</a> - there's
-a demo explaining how this all works.
+This package also contains a linker.
  <p>
 The linker can also be used to convert IPS patches into
 binary files (an empty space is assumed to be the original
