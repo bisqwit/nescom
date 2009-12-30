@@ -17,6 +17,8 @@ struct BadAddressException { };
 static unsigned LastPage;
 static unsigned char* ROM;
 static unsigned char* Pages[8] = {0,0,0,0};
+static unsigned Page0=0, Page1=1, Page2=2, Page3=3;
+
 inline unsigned char& Rd6502(unsigned addr)
 {
     unsigned char page = addr >> 13;
@@ -41,16 +43,43 @@ static unsigned addr_to_rom(unsigned addrptr)
     /* returns the index to ROM according to current mapping */
     unsigned char* addr = &Rd6502(addrptr);
     unsigned romptr = addr - ROM;
-    //printf("addr_to_rom(%X) = %X\n", addrptr, romptr);
+    //printf("addr_to_rom(%X) = %X (%u,%u,%u,%u)\n", addrptr, romptr, Page0,Page1,Page2,Page3);
     return romptr;
 }
-
-static unsigned Page0, Page1, Page2, Page3;
 
 static unsigned rom_to_addr(unsigned romptr)
 {
     unsigned rompage = romptr >> 13;
     unsigned romaddr = romptr & 0x1FFF;
+
+#if 0 /* MMC3, i.e. mapper 4, more specifically SMB3 */
+    if(rompage == LastPage)
+    {
+        SetPage(7, Page3=LastPage);
+        return 0xE000 + (romaddr & 0x1FFF);
+    }
+    if(rompage == 0x00 || rompage == 0x0A || rompage == 0x1D)
+    {
+        SetPage(6, Page2 = rompage);
+        return 0xC000 + (romaddr & 0x1FFF);
+    }
+    if(rompage == 0x1E)
+    {
+        SetPage(4, Page0 = rompage);
+        return 0x8000 + (romaddr & 0x1FFF);
+    }
+    SetPage(5, Page1 = rompage);
+    return 0xA000 + (romaddr & 0x1FFF);
+  /*
+    if(rompage == LastPage-1)
+    {
+        SetPage(4, Page0=LastPage-1);
+        return 0x8000 + (romaddr & 0x1FFF);
+    }
+    SetPage(5, Page1 = rompage);
+    return 0xA000 + (romaddr & 0x1FFF);
+  */
+#else
     if(rompage == LastPage
     || rompage == LastPage-1)
     {
@@ -58,10 +87,10 @@ static unsigned rom_to_addr(unsigned romptr)
         SetPage(7, Page3=LastPage);
         return 0xC000 + romaddr + (rompage&1)*0x2000;
     }
-
     SetPage(4, Page0 = (rompage&~1));
     SetPage(5, Page1 = (rompage&~1)+1);
     return 0x8000 + romaddr + (rompage&1)*0x2000;
+#endif
 }
 
 #define WORD(A) (Rd6502((A)+1)*256+Rd6502((A)))
@@ -204,12 +233,25 @@ static void PrintRomAddress(unsigned romptr)
     unsigned rompage = romptr >> 13;
     unsigned romaddr = romptr & 0x1FFF;
     unsigned res = 0;
+    if(rompage == Page3) { res = 0xE000 + romaddr; goto done; }
+    if(rompage == Page2) { res = 0xC000 + romaddr; goto done; }
+    if(rompage == Page1) { res = 0xA000 + romaddr; goto done; }
+    if(rompage == Page0) { res = 0x8000 + romaddr; goto done; }
+#if 0 /* MMC3, i..e mapper 4, more specifically SMB3 */
+    if(rompage == LastPage)   { res = 0xE000 + romaddr; goto done; }
+    if(rompage == 0x00 || rompage == 0x0A || rompage == 0x1D)
+                         { res = 0xC000 + romaddr; goto done; }
+    if(rompage == 0x1E)
+                         { res = 0x8000 + romaddr; goto done; }
+    res = 0xA000 + romaddr;
+#else
     if(rompage == LastPage)   { res = 0xE000 + romaddr; goto done; }
     if(rompage == LastPage-1) { res = 0xC000 + romaddr; goto done; }
     if(rompage & 1)
         { res = 0xA000 + romaddr; goto done; }
     else
         { res = 0x8000 + romaddr; goto done; }
+#endif
 done:
     printf("$%04X", res);
 }
@@ -293,7 +335,7 @@ public:
     SimulReg(): defined_at(-1), value(0),known(2) { }
     void Invalidate() { known=0; defined_at = -1; }
     void MakeWeak() { if(known==1) known=5; else Invalidate(); }
-    void Assign(const SimulReg& reg) { *this = reg; }
+    void Assign(const SimulReg& reg, int defloc=-1) { *this = reg; defined_at = defloc; }
     void Assign(int v, int defloc=-1) { value=v; known=1; defined_at = defloc; }
     void AssignXindex(unsigned romptr, int defloc=-1) { romaddr=romptr; known=3; defined_at = defloc; }
     void AssignYindex(unsigned romptr, int defloc=-1) { romaddr=romptr; known=4; defined_at = defloc; }
@@ -331,13 +373,14 @@ public:
     {
         switch(known)
         {
-            case 0: printf("(?)"); break;
+            case 0: printf("(??"")"); break;
             case 1: printf("(%02X)", value); break;
-            case 2: printf("(...)"); break;
+            case 2: printf("(un)"); break;
             case 3: printf("$%04X,x", romaddr); break;
             case 4: printf("$%04X,y", romaddr); break;
-            case 5: printf("(?%02X)", value); break;
+            case 5: printf("[%02X]", value); break;
         }
+        if(defined_at != -1) printf("<%X>", defined_at);
     }
 };
 struct SimulFlag
@@ -386,6 +429,8 @@ struct SimulRegPtr
     
     template<typename T>
     void Assign(const T b) { if(!ptr) ptr = new SimulReg; ptr->Assign(b); }
+    template<typename T>
+    void Assign(const T b, int p) { if(!ptr) ptr = new SimulReg; ptr->Assign(b,p); }
 
     SimulRegPtr(const SimulRegPtr& b)
         { ptr=0; if(b.ptr) Assign(*b.ptr); }
@@ -401,6 +446,32 @@ private:
     SimulReg* ptr;
 };
 
+struct PageGuess
+{
+    signed char p8,pA,pC,pE;
+    
+    PageGuess() : p8(-1),pA(-1),pC(-1),pE(-1) { }
+    
+    bool Known() const { return p8>=0 || pA>=0 || pC>=0 || pE>=0; }
+    
+    void Set() const
+    {
+        if(p8 >= 0) SetPage(4, p8);
+        if(pA >= 0) SetPage(5, pA);
+        if(pC >= 0) SetPage(6, pC);
+        if(pE >= 0) SetPage(7, pE);
+    }
+    const std::string str() const
+    {
+        std::string res;
+        if(p8 >= 0) { char Buf[32]; sprintf(Buf, "[8:%X]",p8); res += Buf; }
+        if(pA >= 0) { char Buf[32]; sprintf(Buf, "[A:%X]",pA); res += Buf; }
+        if(pC >= 0) { char Buf[32]; sprintf(Buf, "[C:%X]",pC); res += Buf; }
+        if(pE >= 0) { char Buf[32]; sprintf(Buf, "[E:%X]",pE); res += Buf; }
+        return res;
+    }
+};
+
 struct SimulCPU
 {
     SimulReg A, X, Y;
@@ -409,7 +480,7 @@ struct SimulCPU
     std::deque<SimulReg> Stack;
     SimulRegPtr RAM[TRACK_RAM_SIZE];
     
-    SimulReg pagereg[4];
+    SimulReg pagereg[4], mmc3cmd;
     
     void SetPageReg(unsigned page, SimulReg& v) { pagereg[page].Assign(v); }
     void SetPageReg(unsigned page, int v, bool weak = false)
@@ -429,10 +500,14 @@ struct SimulCPU
         if(pagereg[3].Known()) SetPage(7, Page3 = pagereg[3].Value());
     }
     
-    int GuessPage45() const
+    PageGuess GuessPage45() const
     {
-        if(pagereg[0].Known()) return pagereg[0].Value() / 2;
-        return -1;
+        PageGuess result;
+        if(pagereg[0].Known()) result.p8 = pagereg[0].Value();
+        if(pagereg[1].Known()) result.pA = pagereg[1].Value();
+        if(pagereg[2].Known()) result.pC = pagereg[2].Value();
+        if(pagereg[3].Known()) result.pE = pagereg[3].Value();
+        return result;
     }
     
     void Invalidate()
@@ -469,6 +544,7 @@ struct SimulCPU
             pagereg[a].Combine(cpu2.pagereg[a]);
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a)
             RAM[a].Combine(cpu2.RAM[a]);
+        mmc3cmd.Combine(cpu2.mmc3cmd);
         
         if(Stack.empty())
             Stack = cpu2.Stack;
@@ -491,10 +567,11 @@ struct SimulCPU
         printf("Y"); Y.Dump();
         
         printf("MAP[");
-        printf("%u:", Page0); pagereg[0].Dump();
-        printf(",%u:", Page1); pagereg[1].Dump();
-        printf(",%u:", Page2); pagereg[2].Dump();
-        printf(",%u:", Page3); pagereg[3].Dump();
+        printf("%02X:", Page0); pagereg[0].Dump();
+        printf(",%02X:", Page1); pagereg[1].Dump();
+        printf(",%02X:", Page2); pagereg[2].Dump();
+        printf(",%02X:", Page3); pagereg[3].Dump();
+        printf(",mmc:"); mmc3cmd.Dump();
         printf("]");
         
         printf("s(%u)", (unsigned)Stack.size());
@@ -528,7 +605,7 @@ struct SimulCPU
         //printf("-------> Changed: "); Dump(); printf("\n");
     }
     
-    void MapperWrite(unsigned addr, const SimulReg& reg)
+    void MapperWrite(unsigned addr, const SimulReg& reg, int at=-1)
     {
 #if 0 /* MAPPER 2 */
         if(reg.Known())
@@ -543,7 +620,7 @@ struct SimulCPU
             pagereg[1].MakeWeak();
         }
 #endif
-#if 1 /* MAPPER 1 */
+#if 0 /* MAPPER 1 */
         if(!reg.Known())
         {
             pagereg[0].MakeWeak();
@@ -597,6 +674,53 @@ struct SimulCPU
             }
         }
 #endif
+#if 0 /* MMC3, mapper 4 */
+        if(addr >= 0x8000 && addr <= 0xBFFF)
+            switch(addr & 0xE001)
+            {
+                case 0x8000:
+                {
+                    if(reg.Known())
+                    {
+                        unsigned wascmd = mmc3cmd.Value();
+                        unsigned cmd = reg.Value();
+                        unsigned was8 = (wascmd & 0x40) ? 2 : 0;
+                        unsigned is8  = (cmd    & 0x40) ? 2 : 0;
+                        unsigned not8 = 2-is8;
+                        SetPageReg(is8,  pagereg[was8].Value(), reg.Known());
+                        SetPageReg(not8, pagereg[3].Value()-1, false);
+                    }
+                    else
+                    {
+                        pagereg[0].MakeWeak();
+                        pagereg[2].MakeWeak();
+                    }
+                    mmc3cmd.Assign(reg);
+                    break;
+                }
+                case 0x8001:
+                {
+                    if(mmc3cmd.Known())
+                        switch(mmc3cmd.Value() & 7)
+                        {
+                            case 6:
+                                SetPageReg( mmc3cmd.Value() & 0x40 ? 2 : 0,
+                                              reg.Value(), !reg.Known());
+                                break;
+                            case 7:
+                                SetPageReg(1, reg.Value(), !reg.Known());
+                                break;
+                        }
+                    else
+                    {
+                        pagereg[0].MakeWeak();
+                        pagereg[1].MakeWeak();
+                        pagereg[2].MakeWeak();
+                    }
+                    break;
+                }
+            }
+#endif
     }
     void MapperProgram(const SimulReg& reg)
     {
@@ -633,27 +757,25 @@ struct PointerTableItem
     bool final;
     int offset;
     
-    int page45;
+    PageGuess page45;
     
     std::string nametemplate;
     bool is_default_name;
     
     PointerTableItem()
         : stepping(0), final(true), offset(0),
-          page45(-1),
+          page45(),
           is_default_name(true) {}
 
     void LoadMemMaps() const
     {
         rom_to_addr(loptr); // Autoguess mappings
         
-        if(page45 >= 0)
+        if(page45.Known())
         {
-            fprintf(stderr, "Reading pointer value at %X (page=%d)\n", 
-                loptr, page45);
-            
-            SetPage(4, page45*2    );
-            SetPage(5, page45*2 + 1);
+            fprintf(stderr, "Reading pointer value at %X (page=%s)\n", 
+                loptr, page45.str().c_str());
+            page45.Set();
         }
     }
 };
@@ -676,9 +798,8 @@ struct State
     Disassembly code;
     
     unsigned referred_address;
-    int      referred_offset;  // for example, offs=1 when code says $CFDA but refaddr is $CFDB
 
-    enum reftype { none=0, lo=1, hi=2, times64=3 };
+    enum reftype { none=0, lo=1, hi=2 };
     
     struct {
         reftype referred_byte    : 2;
@@ -700,7 +821,6 @@ public:
         FirstJumpFrom(-1),
         LastJumpFrom(-1),
         JumpsTo(-1),
-        referred_address(0), referred_offset(0),
         referred_byte(none),
         meaning_interpreted(false),
         barrier(false),
@@ -812,47 +932,21 @@ public:
         if(DiscoverIndexedAddresses()) goto Retry;
     }
     
-    bool PossiblyMarkImmediatePointer(State& lo, State& hi, int refoffs=0, bool data=true)
+    bool PossiblyMarkImmediatePointer(State& lo, State& hi)
     {
         unsigned address = lo.code.Param
-                         + hi.code.Param*256
-                         + refoffs;
-        
+                         + hi.code.Param*256;
         if(address >= 0x8000)
         {
-            if(data)
-                MarkAddressMaybeData(addr_to_rom(address), false, lo);
-            else
-                MarkAddressMaybeCode(addr_to_rom(address), lo);
+            MarkAddressMaybeData(addr_to_rom(address), false, lo);
 
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
 
             lo.referred_address = address;
             lo.referred_byte    = State::lo;
-            lo.referred_offset  = refoffs;
-            
             hi.referred_address = address;
             hi.referred_byte    = State::hi;
-            hi.referred_offset  = refoffs;
-            
-            return true;
-        }
-        return false;
-    }
-    
-    bool PossiblyMarkDPCMpointer(State& lo)
-    {
-        unsigned address = 0xC000 + lo.code.Param * 64;
-        if(address >= 0x8000)
-        {
-            MarkAddressMaybeData(addr_to_rom(address), false, lo);
-
-            lo.meaning_interpreted = true;
-
-            lo.referred_address = address;
-            lo.referred_byte    = State::times64;
-            lo.referred_offset  = 0xC000;
             
             return true;
         }
@@ -867,9 +961,9 @@ public:
             lo.cpu.LoadMap();
             unsigned address = addr_to_rom(lo.code.Param);
 
-            printf("; Possibly discovered a data table at %X ($%X) (page %d)\n",
+            printf("; Possibly discovered a data table at %X ($%X) (page %s)\n",
                    address, lo.code.Param,
-                   lo.cpu.GuessPage45());
+                   lo.cpu.GuessPage45().str().c_str());
 
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
@@ -900,36 +994,6 @@ public:
       catch(BadAddressException)
       {
       }
-        return false;
-    }
-    
-    bool TestDPCMaddressPoke(State* States[4])
-    {
-        #define LDreg(code) \
-            (code.Mode != Im && code.Mode != Ay \
-                ? 0 \
-                : code.OpCodeId == 29 ? 'A' \
-                : code.OpCodeId == 31 ? 'X' \
-                : code.OpCodeId == 32 ? 'Y'  \
-                : 0 )
-        #define STreg(code) \
-            (  code.OpCodeId == 44 ? 'A' \
-             : code.OpCodeId == 45 ? 'X' \
-             : code.OpCodeId == 46 ? 'Y' \
-             : 0 )
-        
-        char L0 = LDreg(States[0]->code), S0 = STreg(States[0]->code);
-        char L1 = LDreg(States[1]->code), S1 = STreg(States[1]->code);
-        
-        #undef LDreg
-        #undef STreg
-        
-        if(L0 != 0 && L0 == S1 && States[1]->code.Mode  == Ab
-                               && States[1]->code.Param == 0x4012
-                               && !States[0]->meaning_interpreted)
-        {
-            return PossiblyMarkDPCMpointer(*States[0]);
-        }
         return false;
     }
     
@@ -1000,10 +1064,16 @@ public:
         }
         else if(L0 && L2)
         {
+            if(L0 == L2 && L0 != S1) return false; // first reg was not saved
             if(L0 == S1 && L2 == S3)
             {
                 Load0 = 0; Store0 = 1;
                 Load1 = 2; Store1 = 3;
+            }
+            else if(L0 == S3 && L2 == S1)
+            {
+                Load0 = 0; Store0 = 3;
+                Load1 = 2; Store1 = 1;
             }
             else return false; // Wrong types of stores
         }
@@ -1045,37 +1115,6 @@ public:
             default:;
         }
         return true;
-    }
-    
-    bool TestCodeAddressPush(State* States[4])
-    {
-        /*
-           Possibilities (read up to down):
-             lda
-             pha
-             lda
-             pha
-           Not dealt with:
-             txa    tya   pha    pha
-             pha    pha   txa    tya
-             tya    txa   pha    pha
-             pha    pha
-        */
-        
-        if(States[0]->code.Mode == Im && States[0]->code.OpCodeId == 29  // LDA
-        && States[2]->code.Mode == Im && States[2]->code.OpCodeId == 29  // LDA
-        && States[1]->code.OpCodeId == 35  // PHA
-        && States[3]->code.OpCodeId == 35  // PHA
-          )
-        {
-            if(States[0]->meaning_interpreted) return false;
-            if(States[2]->meaning_interpreted) return false;
-        
-            return PossiblyMarkImmediatePointer(*States[2], *States[0],
-                                                1, /* RTS pushes always have an offset of 1 */
-                                                false);
-        }
-        return false;
     }
     
     bool TestLoadTableXY(State* States[4])
@@ -1150,22 +1189,12 @@ public:
             
             State* States[4] = { &state0,&state1,&state2,&state3 };
             
-            if(TestDPCMaddressPoke(States))
-            {
-                found_more_labels = true;
-                romptr = romptr2;
-                continue;
-            }
-            
             if(TestDataAddressPoke(States))
                 { Success:
                     found_more_labels = true;
                     romptr=romptr4;
                     continue;
                 }
-
-            if(TestCodeAddressPush(States)) goto Success;
-
             if(TestLoadTableXY(States)) { goto Success; }
             
             goto Ignore;
@@ -1262,18 +1291,6 @@ public:
         goto Fallback;
     }
     
-    void PrintAddressName(unsigned addr, bool is_jump = false, unsigned jump_from = 0) const
-    {
-        try
-        {
-            PrintROMAddressName(addr_to_rom(addr), is_jump, jump_from);
-        }
-        catch(const BadAddressException& )
-        {
-            printf("$%04X", addr);
-        }
-    }
-    
     void DefineRAM(unsigned addr, const std::string& name)
     {
         RAMaddressNames[addr] = name;
@@ -1288,6 +1305,19 @@ public:
             return;
         }
         printf("$%0*X", bytes*2, addr);
+    }
+    
+    void PrintAddressName(unsigned addr, bool is_jump = false, unsigned jump_from = 0) const
+    {
+        try
+        {
+            PrintROMAddressName(addr_to_rom(addr), is_jump, jump_from);
+        }
+        catch(const BadAddressException& )
+        {
+            PrintRAMaddress(addr, addr<256 ? 1 : 2);
+            //printf("$%04X", addr);
+        }
     }
     
     void DumpCode(unsigned romptr, const State& state, unsigned& code_indent) const
@@ -1321,24 +1351,13 @@ public:
                     case State::lo:
                     {
                         printf("<");
-                        if(state.referred_offset != 0) printf("(");
                         PrintAddressName(state.referred_address);
-                        if(state.referred_offset != 0) printf(" - %d)", state.referred_offset);
                         break;
                     }
                     case State::hi:
                     {
                         printf(">");
-                        if(state.referred_offset != 0) printf("(");
                         PrintAddressName(state.referred_address);
-                        if(state.referred_offset != 0) printf(" - %d)", state.referred_offset);
-                        break;
-                    }
-                    case State::times64:
-                    {
-                        printf("((");
-                        PrintAddressName(state.referred_address);
-                        printf(" - $%X) / 64)", state.referred_offset);
                         break;
                     }
                 }
@@ -1796,12 +1815,7 @@ public:
                     if(jmp.hiptr == jmp.loptr+1)
                     {
                         printf("  %02X %02X%*s.word (", ROM[romptr], ROM[romptr+1], -8,":");
-                        
-                        if(targetptr < 0x800)
-                            PrintRAMaddress(targetptr, 2);
-                        else
-                            PrintAddressName(targetptr);
-                        
+                        PrintAddressName(targetptr);
                         jmp.LoadMemMaps();
                         if(jmp.offset) printf(" %+d", -jmp.offset);
                         
@@ -1809,7 +1823,7 @@ public:
                           try { jmpromptr=addr_to_rom(targetptr); }
                           catch(const BadAddressException& ) { }
                         
-                        printf(") ;%X (%X) (%d)\n", targetptr, jmpromptr, jmp.page45);
+                        printf(") ;%X (%X) (%s)\n", targetptr, jmpromptr, jmp.page45.str().c_str());
                         
                         //printf(")\n");
                         romptr += 2;
@@ -1888,7 +1902,7 @@ private:
                             int offset,
                             const std::string& tabletype, bool is_default_name,
                             void (Disassembler::*Installer) (const PointerTableItem& ),
-                            int page45 = -1)
+                            PageGuess page45 = PageGuess())
     {
         bool first=true;
         while(first || extent > 0)
@@ -1952,13 +1966,13 @@ private:
     }
 public:
     #define DeclareMarkingFuncs(funname, installername, defaultname) \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0, int page45=-1) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0, PageGuess page45=PageGuess()) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, defaultname,true, \
                                    &Disassembler::installername, page45); \
         } \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0, int page45=-1) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0, PageGuess page45=PageGuess()) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, name,false, \
@@ -2025,7 +2039,7 @@ private:
         return false;
     }
     
-    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, int page45 = -1)
+    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, PageGuess page45 = PageGuess())
     {
         bool retval = Mark(rom_address, MaybeData, false, page45);
         results[rom_address].is_referred |= was_indexed ? 2 : 4;
@@ -2034,21 +2048,16 @@ private:
     
     bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, const State& state)
     {
-        int page45 = state.cpu.GuessPage45();
+        PageGuess page45 = state.cpu.GuessPage45();
         bool result = MarkAddressMaybeData(rom_address, was_indexed, page45);
         results[rom_address].cpu.Combine(state.cpu);
         return result;
     }
     
-    bool MarkAddressMaybeCode(unsigned rom_address, const State& state)
+    void ProcessCode(const unsigned romptr) __attribute__((noinline))
     {
-        bool result = Mark(rom_address, MaybeCode, true, state.cpu.GuessPage45());
-        results[rom_address].cpu.Combine(state.cpu);
-        return result;
-    }
-    
-    void ProcessCode(const unsigned romptr)
-    {
+        if(romptr >= results.size()) throw false;
+        
         State& state = results[romptr];
         
         unsigned addrptr = rom_to_addr(romptr);
@@ -2238,9 +2247,12 @@ private:
                   )
                 {
                     Branch = addr_to_rom(code.Param);
-                    Mark(Branch, CertainlyCode, true);
-                    results[Branch].cpu.Combine(state.cpu);
-                    results[Branch].JumpedFromInsert(romptr);
+                    if(Branch < results.size())
+                    {
+                        Mark(Branch, CertainlyCode, true);
+                        results[Branch].cpu.Combine(state.cpu);
+                        results[Branch].JumpedFromInsert(romptr);
+                    }
                     state.JumpsTo = Branch;
                 }
                 //Next = Unknown;
@@ -2273,6 +2285,7 @@ private:
                   )
                 {
                     Branch = addr_to_rom(code.Param);
+                    if(Branch >= results.size()) goto failed_jsr;
                     
                     results[Branch].CalledFrom.insert(romptr);
                     
@@ -2319,14 +2332,12 @@ private:
                                 if(x_at >= 0)
                                     { results[x_at].referred_address = addr;
                                       results[x_at].referred_byte = State::lo;
-                                      results[x_at].referred_offset = 0;
                                       results[x_at].meaning_interpreted=true;
                                     }
                                 int y_at = state.cpu.Y.GetDefineLocation();
                                 if(y_at >= 0)
                                     { results[y_at].referred_address = addr;
                                       results[y_at].referred_byte = State::hi;
-                                      results[x_at].referred_offset = 0;
                                       results[y_at].meaning_interpreted=true;
                                     }
                            }
@@ -2344,6 +2355,7 @@ private:
                 }
                 else
                 {
+                failed_jsr:
                     printf("Call to $%X: Unknown target\n", code.Param);
                 }
                 
@@ -2530,12 +2542,12 @@ private:
                     case Ab:
                         if(code.Param < TRACK_RAM_SIZE)
                         {
-                            state.cpu.RAM[code.Param].Assign(state.cpu.A);
+                            state.cpu.RAM[code.Param].Assign(state.cpu.A, (int)romptr);
                             break;
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.MapperWrite(code.Param, state.cpu.A);
+                            state.cpu.MapperWrite(code.Param, state.cpu.A, (int)romptr);
                             break;
                         }
                     default: ;
@@ -2548,12 +2560,12 @@ private:
                     case Ab:
                         if(code.Param < TRACK_RAM_SIZE)
                         {
-                            state.cpu.RAM[code.Param].Assign(state.cpu.X);
+                            state.cpu.RAM[code.Param].Assign(state.cpu.X, (int)romptr);
                             break;
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.MapperWrite(code.Param, state.cpu.X);
+                            state.cpu.MapperWrite(code.Param, state.cpu.X, (int)romptr);
                             break;
                         }
                     default: ;
@@ -2566,12 +2578,12 @@ private:
                     case Ab:
                         if(code.Param < TRACK_RAM_SIZE)
                         {
-                            state.cpu.RAM[code.Param].Assign(state.cpu.Y);
+                            state.cpu.RAM[code.Param].Assign(state.cpu.Y, (int)romptr);
                             break;
                         }
                         if(code.Param >= 0x8000)
                         {
-                            state.cpu.MapperWrite(code.Param, state.cpu.Y);
+                            state.cpu.MapperWrite(code.Param, state.cpu.Y, (int)romptr);
                             break;
                         }
                     default: ;
@@ -2640,13 +2652,13 @@ private:
                 Mark(Next, CertainlyCode);
         }
         
-        if(Next   != NoWhere)
+        if(Next   != NoWhere && Next < results.size())
         {
             //printf("Combining $%X (next) from $%X, Result: ", Next, romptr);
             results[Next].cpu.Combine(state.cpu);
             //results[Next].cpu.Dump(); printf("\n");
         }
-        if(Branch != NoWhere)
+        if(Branch != NoWhere && Branch < results.size())
         {
             //printf("Combining $%X (branch) from $%X, Result: ", Branch, romptr);
             results[Branch].cpu.Combine(state.cpu);
@@ -2669,7 +2681,7 @@ private:
 public:
     bool Mark(unsigned romptr, CodeLikelihood type,
               bool is_referred = false,
-              int page45 = -1)
+              PageGuess page45 = PageGuess())
     {
         int certainty = CertaintyOf(type);
         
@@ -2689,11 +2701,10 @@ public:
             results[romptr].Type = type;
             
             // if the referrer knows some mappings, copy them to the referred
-            if(page45 >= 0)
-            {
-                results[romptr].cpu.SetPageReg(0, page45*2    , true);
-                results[romptr].cpu.SetPageReg(1, page45*2 + 1, true);
-            }
+            if(page45.p8 >= 0) results[romptr].cpu.SetPageReg(0, page45.p8, true);
+            if(page45.pA >= 0) results[romptr].cpu.SetPageReg(1, page45.pA, true);
+            if(page45.pC >= 0) results[romptr].cpu.SetPageReg(2, page45.pC, true);
+            if(page45.pE >= 0) results[romptr].cpu.SetPageReg(3, page45.pE, true);
             
             if(is_referred) results[romptr].is_referred |= 1;
         }
@@ -2716,7 +2727,7 @@ public:
     
     bool Mark(unsigned romptr, const std::string& name, CodeLikelihood type,
               bool is_referred = false,
-              int page45 = -1)
+              PageGuess page45 = PageGuess())
     {
         //printf("Mark %05X, %d, name %s\n", romptr,type, name.c_str());
 
@@ -2937,8 +2948,8 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         
         CodeLikelihood type = Unknown;
         
-        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset,int page45);
-        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,int page45);
+        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset,PageGuess page45);
+        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,PageGuess page45);
         
         if(tokens[0] == "CertainlyCode") { type = CertainlyCode; goto MarkCall; }
         if(tokens[0] == "MaybeCode")     { type = MaybeCode; goto MarkCall; }
@@ -3044,14 +3055,20 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             int step = ParseInt(tokens[3]);
             int ext  = ParseInt(tokens[4]);
             //fprintf(stderr, "lo=%X, hi=%X, step=%u, ext=%u\n",lo,hi,step,ext);
+            PageGuess guess;
             if(tokens.size() == 5)
-                (dasm.*MarkFun1)(lo,hi,step,ext, 0,-1);
+                (dasm.*MarkFun1)(lo,hi,step,ext, 0,guess);
             else if(tokens.size() == 6)
-                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], 0,-1);
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], 0,guess);
             else if(tokens.size() == 7)
-                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), -1);
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), guess);
             else if(tokens.size() == 8)
-                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), ParseInt(tokens[7]));
+            {
+                int page45 = ParseInt(tokens[7]);
+                guess.p8 = page45*2;
+                guess.pA = page45*2+1;
+                (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), guess);
+            }
             else goto SyntaxError;
             continue;
         }

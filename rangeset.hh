@@ -54,13 +54,13 @@ public:
     rangeset() : data() {}
 
     /* Erase everything between the given range */
-    void erase(const Key& lo, const Key& up) { data.erase(lo, up); }
+    size_t erase(const Key& lo, const Key& up) { return data.erase(lo, up); }
 
     /* Erase a single value */
-    void erase(const Key& lo) { data.erase(lo, lo+1); }
+    bool erase(const Key& lo) { return data.erase(lo, lo+1); }
 
-    void erase_before(const Key& lo) { data.erase_before(lo); }
-    void erase_after(const Key& up) { data.erase_after(up); }
+    size_t erase_before(const Key& lo) { return data.erase_before(lo); }
+    size_t erase_after(const Key& up) { return data.erase_after(up); }
 
     /* Modify the given range to have the given value */
     void set(const Key& lo, const Key& up) { data.set(lo, up, true); }
@@ -71,6 +71,17 @@ public:
 
     /* Find the range that has this value */
     const_iterator find(const Key& v) const { return ConstructIterator(data.find(v)); }
+
+    /* Find subranges at least minlen long */
+    typedef enum { First, Smallest, Largest } allocationstrategy;
+
+    rangetype<Key> find_set_subrange
+        (const Key& lo, const Key& up, size_t minlen,
+         allocationstrategy strategy = First) const;
+
+    rangetype<Key> find_unset_subrange
+        (const Key& lo, const Key& up, size_t minlen,
+         allocationstrategy strategy = First) const;
 
     /* Standard functions */
     const_iterator begin() const { return ConstructIterator(data.begin()); }

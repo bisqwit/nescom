@@ -57,7 +57,7 @@ str_replace_inplace(basic_string<CharT>& where,
 {
     for(typename basic_string<CharT>::size_type a = where.size();
         (a = where.rfind(search, a)) != where.npos;
-        where.replace(a, search.size(), 1, with));
+        where.replace(a, search.size(), 1, with)) {}
 }
 
 template<typename CharT>
@@ -68,7 +68,7 @@ str_replace_inplace(basic_string<CharT>& where,
 {
     for(typename basic_string<CharT>::size_type a = where.size();
         (a = where.rfind(search, a)) != where.npos;
-        where.replace(a, search.size(), with));
+        where.replace(a, search.size(), with)) {}
 }
 
 #include <cstdio>
