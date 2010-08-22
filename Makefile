@@ -19,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=1.1.5
+VERSION=1.1.5.1
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \

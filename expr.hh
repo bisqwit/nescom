@@ -5,6 +5,7 @@
 #include <utility>
 #include <list>
 #include <set>
+#include <cstdio>
 
 class expression
 {

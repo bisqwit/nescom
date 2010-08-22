@@ -1,6 +1,7 @@
 #include <set>
 #include <string>
 #include <algorithm>
+#include <cstdio>
 
 #include "warning.hh"
 
