@@ -15,9 +15,9 @@ struct ParseData
 {
 private:
     std::string data;
-    unsigned pos, eofpos;
+    size_t pos, eofpos;
 public:
-    typedef unsigned StateType;
+    typedef size_t StateType;
     
     ParseData() : data(), pos(0), eofpos(0) { }
     ParseData(const std::string& s) : data(s), pos(0), eofpos(data.size()) { }
@@ -27,8 +27,8 @@ public:
     void SkipSpace() { while(!EOF() && (data[pos] == ' ' || data[pos] == '\t'))++pos; }
     StateType SaveState() const { return pos; }
     void LoadState(const StateType state) { pos = state; }
-    char GetC() { return EOF() ? 0 : data[pos++]; }
-    char PeekC() const { return EOF() ? 0 : data[pos]; }
+    char GetC() { return EOF() ? '\0' : data[pos++]; }
+    char PeekC() const { return EOF() ? '\0' : data[pos]; }
     
     const std::string GetRest() const { return data.substr(pos); }
 };
