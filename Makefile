@@ -61,7 +61,7 @@ ARCHDIR=archives/
 
 PROGS=nescom disasm clever-disasm neslink
 
-INSTALLPROGS=nescom neslink
+INSTALLPROGS=nescom neslink nescom-disasm
 INSTALL=install
 
 all: $(PROGS)
@@ -80,6 +80,9 @@ neslink: \
 		object.o dataarea.o \
 		warning.o 
 	$(CXX) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
+
+nescom-disasm: disasm
+	ln -f $^ $@
 
 disasm: disasm.o romaddr.o o65.o
 	$(CXX) $(CXXFLAGS) -g -o $@ $^
