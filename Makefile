@@ -19,7 +19,7 @@ OPTIM=-O3
 
 CPPFLAGS += -I.
 
-VERSION=1.1.5.1
+VERSION=1.1.5.2
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -44,7 +44,7 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           romaddr.cc romaddr.hh \
           binpacker.hh binpacker.tcc \
           logfiles.hh \
-          rangeset.hh rangeset.tcc range.hh \
+          rangeset.hh rangeset.tcc range.hh range.tcc \
           miscfun.hh miscfun.tcc \
           \
           clever/kage.ini \
