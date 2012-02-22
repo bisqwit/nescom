@@ -2930,7 +2930,7 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         if(!std::fgets(Buf,sizeof(Buf),fp)) break;
         std::strtok(Buf, "\r"); std::strtok(Buf, "\n");
         const char* ptr = Buf;
-        while(*ptr == ' ') ++ptr;
+        while(*ptr == ' ' || *ptr == '\t') ++ptr;
         if(*ptr == '#' || !*ptr || *ptr == '\n') continue;
         std::vector<std::string> tokens = Split(ptr);
         
