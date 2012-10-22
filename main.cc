@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <unistd.h> // unlink
 
 #include "assemble.hh"
 #include "precompile.hh"

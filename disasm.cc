@@ -142,6 +142,67 @@ static int HandleIPS()
     }
     return 0;
 }
+static int HandleFDS(int num_sides)
+{
+    // Skip the remainder of FDS header
+    { char Buf[16-5]; fread(Buf, 1, sizeof(Buf), stdin); }
+
+    for(int side = 0; side < num_sides; ++side)
+    {
+        unsigned char Buf[65500] = { 0 };
+        fread(Buf, 1, sizeof(Buf), stdin);
+
+        unsigned length       = 1;
+        unsigned base_address = 0;
+        unsigned datatype     = 0;
+        for(unsigned ptr = 0; ptr < sizeof(Buf); )
+            switch(Buf[ptr])
+            {
+                case 1:
+                    printf(".fds_diskinfo '%.14s',$%02X,'%.4s',$%02X,$%02X, $%02X,$%02X,$%02X, $%02X, $%02X,$%02X,$%02X, $%02X,$%02X,$%02X\n",
+                        &Buf[ptr+1],
+                        Buf[ptr+15],
+                        &Buf[ptr+16],
+                        Buf[ptr+20], Buf[ptr+21], // game version, side number
+                        Buf[ptr+22], Buf[ptr+23], Buf[ptr+24], Buf[ptr+25],
+                        Buf[ptr+31],Buf[ptr+32],Buf[ptr+33],
+                        Buf[ptr+44],Buf[ptr+45],Buf[ptr+46]
+                    );
+                    ptr += 56;
+                    break;
+                case 2:
+                    printf(".fds_numfiles %u\n", Buf[ptr+1]);
+                    ptr += 2;
+                    break;
+                case 3:
+                    base_address = Buf[ptr+11] + 0x100*Buf[ptr+12];
+                    length       = Buf[ptr+13] + 0x100*Buf[ptr+14];
+                    printf(".fds_file $%02X,$%02X,'%.8s', $%04X, %u, $%02X ;Ends at $%04X\n",
+                        Buf[ptr+1], Buf[ptr+2],  &Buf[ptr+3],
+                        base_address, length,   datatype = Buf[ptr+15],
+                        base_address+length);
+                    ptr += 16;
+                    break;
+                case 4:
+                    if(datatype == 0)
+                        DisAsm(base_address, &Buf[ptr+1], length, CODE);
+                    else
+                    {
+                        printf(".data ... FIXME\n");
+                    }
+                    ptr += length+1;
+                    break;
+                case 0:
+                    ++ptr;
+                    break;
+                default:
+                    printf(".byte $%02X\n", Buf[ptr++]);
+            }
+        printf("---\n");
+    }
+    return 0;
+}
+
 static void LoadO65globals(const O65& o, SegmentSelection seg)
 {
     std::multimap<unsigned, std::string>& glob = Globals[seg];
@@ -237,6 +298,8 @@ int main(int argc, const char *const *argv)
                 return HandleIPS();
             if(!strncmp(Buf+2, "o65", 3))
                 return HandleO65();
+            if(!strncmp(Buf, "FDS\x1A", 4))
+                return HandleFDS(Buf[4]);
             first = false;
         }
         

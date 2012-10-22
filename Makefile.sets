@@ -34,7 +34,7 @@ OPTIM=-ffast-math -O1
 
 # Flags.
 CFLAGS=$(OPTIM) $(CCOPTS)
-CXXFLAGS=$(OPTIM) $(CXXOPTS) -fno-default-inline
+CXXFLAGS=$(OPTIM) $(CXXOPTS) -fno-default-inline -Wno-conversion
 #-fno-rtti
 
 #LDFLAGS=-pg -ax

@@ -2,6 +2,7 @@
 #include <list>
 #include <map>
 #include <set>
+#include <unistd.h> //ftruncate
 
 #include "dataarea.hh"
 #include "assemble.hh"
@@ -1274,7 +1275,7 @@ void Object::WriteO65(std::FILE* fp)
         default: /* ignore */ break;
     }
     
-    PutCustomHeader(fp, 2, PROGNAME" "VERSION);
+    PutCustomHeader(fp, 2, PROGNAME " " VERSION);
     
     // end custom headers
     PutC(0, fp);

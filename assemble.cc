@@ -512,7 +512,7 @@ GotLabel:
                     "Error: '%s' is invalid parameter for '%s' in current context (%u choices).\n",
                         data.GetRest().c_str(),
                         tok.c_str(),
-                        choices.size());
+                        (unsigned) choices.size());
                 return;
             }
         }
