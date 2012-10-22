@@ -1,7 +1,7 @@
 #include "romaddr.hh"
 #include <stdio.h>
 
-unsigned ROMmap_npages = 16;
+unsigned ROMmap_npages = 8;
 
 unsigned long MakeNESaddr(unsigned char bank, unsigned offs)
 {

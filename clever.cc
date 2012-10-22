@@ -16,24 +16,31 @@ struct BadAddressException { };
 
 static unsigned LastPage;
 static unsigned char* ROM;
-static unsigned char* Pages[8] = {0,0,0,0};
-static unsigned Page0=0, Page1=1, Page2=2, Page3=3;
+static unsigned char* Pages[8] = {0,0,0,0, 0,0,0,0};
+
+static int MapperNum = 0;
+
+static bool ShowDumpData = true;
 
 inline unsigned char& Rd6502(unsigned addr)
 {
     unsigned char page = addr >> 13;
     unsigned pageaddr  = addr & 0x1FFF;
-    
+
     //printf("%X = page %u, addr %X\n", addr, page, pageaddr);
-    
+
     return Pages[page][pageaddr];
 }
 static void SetPage(unsigned addrpage, unsigned rompage)
 {
     unsigned char* ptr = ROM + (rompage << 13);
+    if(rompage > LastPage)
+        abort();
     //printf("SetPage(%u,%p)\n", addrpage,ptr);
     Pages[addrpage] = ptr;
 }
+
+/* addr_to_rom: Convert a 6502 address into a ROM address under current knowledge of mapping */
 static unsigned addr_to_rom(unsigned addrptr)
 {
     if(addrptr < 0x8000)
@@ -43,54 +50,79 @@ static unsigned addr_to_rom(unsigned addrptr)
     /* returns the index to ROM according to current mapping */
     unsigned char* addr = &Rd6502(addrptr);
     unsigned romptr = addr - ROM;
-    //printf("addr_to_rom(%X) = %X (%u,%u,%u,%u)\n", addrptr, romptr, Page0,Page1,Page2,Page3);
+    //printf("addr_to_rom(%X) = %X (%p - %p)\n", addrptr, romptr, addr, ROM);
+    //fflush(stdout);
     return romptr;
 }
 
-static unsigned rom_to_addr(unsigned romptr)
+static unsigned rom_to_addr(unsigned romptr, bool use_mappings, bool set_mappings)
 {
     unsigned rompage = romptr >> 13;
     unsigned romaddr = romptr & 0x1FFF;
 
-#if 0 /* MMC3, i.e. mapper 4, more specifically SMB3 */
-    if(rompage == LastPage)
+    if(use_mappings)
     {
-        SetPage(7, Page3=LastPage);
-        return 0xE000 + (romaddr & 0x1FFF);
+        for(unsigned c=0x8000; c<0x10000; c += 0x2000)
+            if(rompage*0x2000 == addr_to_rom(c))
+                return c + romaddr;
     }
-    if(rompage == 0x00 || rompage == 0x0A || rompage == 0x1D)
+
+#if 1 /* Akumajou Densetsu */
+    if(MapperNum == 24)
     {
-        SetPage(6, Page2 = rompage);
-        return 0xC000 + (romaddr & 0x1FFF);
+        if(rompage == 7 || rompage == 0x1E)
+        {
+            if(set_mappings) SetPage(6, rompage);
+            return 0xC000 + romaddr;
+        }
+        if(rompage == 0x1F)
+        {
+            if(set_mappings) SetPage(7, rompage);
+            return 0xE000+romaddr;
+        }
     }
-    if(rompage == 0x1E)
+#endif
+
+    if(MapperNum == 4) // MMC3
     {
-        SetPage(4, Page0 = rompage);
-        return 0x8000 + (romaddr & 0x1FFF);
+        if(rompage == LastPage)
+        {
+            if(set_mappings) SetPage(7, LastPage);
+            return 0xE000 + (romaddr & 0x1FFF);
+        }
+        if(rompage == 0x00 || rompage == 0x0A || rompage == 0x1D)
+        {
+            if(set_mappings) SetPage(6, rompage);
+            return 0xC000 + (romaddr & 0x1FFF);
+        }
+        if(rompage == 0x1E)
+        {
+            if(set_mappings) SetPage(4, rompage);
+            return 0x8000 + (romaddr & 0x1FFF);
+        }
+        if(set_mappings) SetPage(5, rompage);
+        return 0xA000 + (romaddr & 0x1FFF);
+      /*
+        if(rompage == LastPage-1)
+        {
+            if(set_mappings) SetPage(4, LastPage-1);
+            return 0x8000 + (romaddr & 0x1FFF);
+        }
+        if(set_mappings) SetPage(5, rompage);
+        return 0xA000 + (romaddr & 0x1FFF);
+      */
     }
-    SetPage(5, Page1 = rompage);
-    return 0xA000 + (romaddr & 0x1FFF);
-  /*
-    if(rompage == LastPage-1)
-    {
-        SetPage(4, Page0=LastPage-1);
-        return 0x8000 + (romaddr & 0x1FFF);
-    }
-    SetPage(5, Page1 = rompage);
-    return 0xA000 + (romaddr & 0x1FFF);
-  */
-#else
+
     if(rompage == LastPage
     || rompage == LastPage-1)
     {
-        SetPage(6, Page2=LastPage-1);
-        SetPage(7, Page3=LastPage);
+        if(set_mappings) SetPage(6, LastPage-1);
+        if(set_mappings) SetPage(7, LastPage);
         return 0xC000 + romaddr + (rompage&1)*0x2000;
     }
-    SetPage(4, Page0 = (rompage&~1));
-    SetPage(5, Page1 = (rompage&~1)+1);
+    if(set_mappings) SetPage(4, (rompage&~1));
+    if(set_mappings) SetPage(5, (rompage&~1)+1);
     return 0x8000 + romaddr + (rompage&1)*0x2000;
-#endif
 }
 
 #define WORD(A) (Rd6502((A)+1)*256+Rd6502((A)))
@@ -113,7 +145,7 @@ static unsigned char ad[512]=
   10,Il, 34,Ix, No,No, No,No, No,No, 34,Zp,  2,Zp, No,No, //00
   36,Il, 34,Im,  2,Ac, No,No, No,No, 34,Ab,  2,Ab, No,No,
    9,Rl, 34,Iy, No,No, No,No, No,No, 34,Zx,  2,Zx, No,No, //10
-  13,Il, 34,Ay, No,No, No,No, No,No, 34,Ax,  2,Ax, No,No, 
+  13,Il, 34,Ay, No,No, No,No, No,No, 34,Ax,  2,Ax, No,No,
   28,Iw,  1,Ix, No,No, No,No,  6,Zp,  1,Zp, 39,Zp, No,No, //20
   38,Il,  1,Im, 39,Ac, No,No,  6,Ab,  1,Ab, 39,Ab, No,No,
    7,Rl,  1,Iy, No,No, No,No, No,No,  1,Zx, 39,Zx, No,No, //30
@@ -133,7 +165,7 @@ static unsigned char ad[512]=
   32,Im, 29,Ix, 31,Im, No,No, 32,Zp, 29,Zp, 31,Zp, No,No, //A0
   51,Il, 29,Im, 50,Il, No,No, 32,Ab, 29,Ab, 31,Ab, No,No,
    4,Rl, 29,Iy, No,No, No,No, 32,Zx, 29,Zx, 31,Zy, No,No, //B0
-  16,Il, 29,Ay, 54,Il, No,No, 32,Ax, 29,Ax, 31,Ay, No,No, 
+  16,Il, 29,Ay, 54,Il, No,No, 32,Ax, 29,Ax, 31,Ay, No,No,
   19,Im, 17,Ix, No,No, No,No, 19,Zp, 17,Zp, 20,Zp, No,No, //C0
   24,Il, 17,Im, 21,Il, No,No, 19,Ab, 17,Ab, 20,Ab, No,No,
    8,Rl, 17,Iy, No,No, No,No, No,No, 17,Zx, 20,Zx, No,No, //D0
@@ -152,25 +184,29 @@ struct Disassembly
     int              Param; // 6502 addr, not ROM addr */
     const char*      Prefix;
     const char*      Suffix;
+    int              Meta;
 
     int OpCodeId;
 
-    Disassembly(): Code(""),Bytes(0),Mode(No),Param(0),Prefix(""),Suffix("") {}
+    Disassembly(): Code(""),Bytes(0),Mode(No),Param(0),Prefix(""),Suffix(""),Meta(0) {}
 };
 
-static Disassembly DAsm(const unsigned opaddr) /* 6502 addrs, not ROM addrs. */
+/* DAsm: Disassemble at given 6502 address.
+ *       Note: Requires proper memory mapping for opaddr!
+ */
+static Disassembly DAsm(const unsigned opaddr, unsigned romaddr)
 {
     Disassembly result;
-    
-    unsigned addr = opaddr;
-    const unsigned char op = BYTE(addr++);
-    
+
+    const unsigned romaddr_begin = romaddr;
+    const unsigned char op = ROM[romaddr++];
+
     result.OpCodeId = ad[op*2];
     result.Mode = (Addressing_Modes)ad[op*2+1];
     result.Code = result.Mode == No ? ".db" : mn[result.OpCodeId];
     result.Prefix = "";
     result.Suffix = "";
-    
+
     switch(result.Mode)
     {
         case No: result.Param = op; break;
@@ -178,81 +214,54 @@ static Disassembly DAsm(const unsigned opaddr) /* 6502 addrs, not ROM addrs. */
         case Il: break;
         case Rl:
         {
-            unsigned char J = BYTE(addr++);
-            unsigned target = opaddr + 2 + ((J < 0x80) ? J : (J - 256));
+            unsigned char J = ROM[romaddr++];
+            result.Meta = 2 + ((J < 0x80) ? J : (J - 256));
+            unsigned target = opaddr + result.Meta;
             result.Param = target;
             break;
         }
         case Im:
             result.Prefix = "#";
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Zp:
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Zx:
             result.Suffix = ",x";
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Zy:
             result.Suffix = ",y";
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Ix:
             result.Prefix = "("; result.Suffix = ",x)";
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Iy:
             result.Prefix = "("; result.Suffix = "),y";
-            result.Param = BYTE(addr++); break;
+            result.Param = ROM[romaddr++]; break;
         case Ab: // Used when addressing
-            result.Param = WORD(addr); addr += 2; break;
+            result.Param = ROM[romaddr] + ROM[romaddr+1]*256; romaddr += 2; break;
         case Iw: // Used in jsr/jmp
-            result.Param = WORD(addr); addr += 2; break;
+            result.Param = ROM[romaddr] + ROM[romaddr+1]*256; romaddr += 2; break;
         case Ax:
             result.Suffix = ",x";
-            result.Param = WORD(addr); addr += 2; break;
+            result.Param = ROM[romaddr] + ROM[romaddr+1]*256; romaddr += 2; break;
         case Ay:
             result.Suffix = ",y";
-            result.Param = WORD(addr); addr += 2; break;
+            result.Param = ROM[romaddr] + ROM[romaddr+1]*256; romaddr += 2; break;
         case In:
             result.Prefix = "(";
             result.Suffix = ")";
-            result.Param = WORD(addr); addr += 2; break;
+            result.Param = ROM[romaddr] + ROM[romaddr+1]*256; romaddr += 2; break;
     }
-    if(addr == opaddr) std::abort();
-    result.Bytes = addr - opaddr;
+    result.Bytes = romaddr - romaddr_begin;
     return result;
 }
 
-
-/* Usable functions:
- *   DAsm(char* textbuffer, unsigned addr); // uses Rd6502 to read.
- *   unsigned Rd6502(unsigned addr);
- */
 
 struct ValueNotKnownException { };
 
 static void PrintRomAddress(unsigned romptr)
 {
-    unsigned rompage = romptr >> 13;
-    unsigned romaddr = romptr & 0x1FFF;
-    unsigned res = 0;
-    if(rompage == Page3) { res = 0xE000 + romaddr; goto done; }
-    if(rompage == Page2) { res = 0xC000 + romaddr; goto done; }
-    if(rompage == Page1) { res = 0xA000 + romaddr; goto done; }
-    if(rompage == Page0) { res = 0x8000 + romaddr; goto done; }
-#if 0 /* MMC3, i..e mapper 4, more specifically SMB3 */
-    if(rompage == LastPage)   { res = 0xE000 + romaddr; goto done; }
-    if(rompage == 0x00 || rompage == 0x0A || rompage == 0x1D)
-                         { res = 0xC000 + romaddr; goto done; }
-    if(rompage == 0x1E)
-                         { res = 0x8000 + romaddr; goto done; }
-    res = 0xA000 + romaddr;
-#else
-    if(rompage == LastPage)   { res = 0xE000 + romaddr; goto done; }
-    if(rompage == LastPage-1) { res = 0xC000 + romaddr; goto done; }
-    if(rompage & 1)
-        { res = 0xA000 + romaddr; goto done; }
-    else
-        { res = 0x8000 + romaddr; goto done; }
-#endif
-done:
+    unsigned res = rom_to_addr(romptr, true, false);
     printf("$%04X", res);
 }
 
@@ -261,22 +270,22 @@ enum CodeLikelihood
     CertainlyCode=100,
     MaybeCode    =59, // certainty=9 (just a little worse than MaybeData)
     Unknown      =50,
-    
+
     MaybeData=40, // certainty=10
     PartialCode  =39, // it's data, but not something to be displayed.
 
     UsedJumpJumpPtr=23,
     UsedDataDataPtr=22,
-    
+
     UsedJumpPtr  =21,
     UsedDataPtr  =20,
-    
+
     UnusedJumpJumpPtr=13,
     UnusedDataDataPtr=12,
 
     UnusedJumpPtr=11,
     UnusedDataPtr=10,
-    
+
     CertainlyData=0
     /* After a "beq" or "bcs" and such,
      * the next statement is not necessarily code,
@@ -329,9 +338,9 @@ private:
     int_least32_t defined_at;
     int_least16_t value;
     char known; //0=false, 1=true, 2=uninitialized, 3=rom_xindex, 4=rom_yindex, 5=weak
-    
+
     friend class SimulCPU;
-public:    
+public:
     SimulReg(): defined_at(-1), value(0),known(2) { }
     void Invalidate() { known=0; defined_at = -1; }
     void MakeWeak() { if(known==1) known=5; else Invalidate(); }
@@ -339,7 +348,7 @@ public:
     void Assign(int v, int defloc=-1) { value=v; known=1; defined_at = defloc; }
     void AssignXindex(unsigned romptr, int defloc=-1) { romaddr=romptr; known=3; defined_at = defloc; }
     void AssignYindex(unsigned romptr, int defloc=-1) { romaddr=romptr; known=4; defined_at = defloc; }
-    
+
     void Combine(const SimulReg& reg)
     {
         switch(known)
@@ -359,15 +368,15 @@ public:
                 break;
         }
     }
-    
+
     bool Known() const { return known == 1 || known == 5; }
-    
+
     unsigned IsIndexed() const { switch(known) { case 3:case 4: return romaddr; } return 0; }
     char GetIndexType() const { switch(known) { case 3:return 'x';case 4:return 'y'; } return 0; }
     unsigned Value() const { return value; }
     int GetDefineLocation() const { return defined_at; }
     const SimulReg& GetRef() const { return *this; }
-    
+
 public:
     void Dump() const
     {
@@ -403,7 +412,7 @@ public:
     bool Known() const { return known == 1; }
     bool Value() const { return value; }
     //int GetDefineLocation() const { return defined_at; }
-    
+
     void Dump() const
     {
         switch(known)
@@ -419,14 +428,14 @@ struct SimulRegPtr
 {
     SimulRegPtr() : ptr(0) { }
     ~SimulRegPtr() { delete ptr; }
-    
+
     void Invalidate() { delete ptr; ptr = 0; }
     void Combine(const SimulRegPtr& b)
         { if(!b.ptr) Invalidate(); else if(ptr) ptr->Combine(*b.ptr); else Assign(*b.ptr); }
     bool Known() const { return ptr && ptr->Known(); }
     unsigned char Value() const { return ptr ? ptr->Value() : 0; }
     const SimulReg& GetRef() const { static SimulReg idle; return ptr ? *ptr : idle; }
-    
+
     template<typename T>
     void Assign(const T b) { if(!ptr) ptr = new SimulReg; ptr->Assign(b); }
     template<typename T>
@@ -446,28 +455,30 @@ private:
     SimulReg* ptr;
 };
 
-struct PageGuess
+struct KnowledgeAboutMapping
 {
-    signed char p8,pA,pC,pE;
-    
-    PageGuess() : p8(-1),pA(-1),pC(-1),pE(-1) { }
-    
-    bool Known() const { return p8>=0 || pA>=0 || pC>=0 || pE>=0; }
-    
+    signed char guess_for_page[4];
+
+    KnowledgeAboutMapping() : guess_for_page{-1,-1,-1,-1} { }
+
+    bool Known() const
+    {
+        for(auto s: guess_for_page) if(s >= 0) return true;
+        return false;
+    }
+
     void Set() const
     {
-        if(p8 >= 0) SetPage(4, p8);
-        if(pA >= 0) SetPage(5, pA);
-        if(pC >= 0) SetPage(6, pC);
-        if(pE >= 0) SetPage(7, pE);
+        for(unsigned c=0; c<4; ++c)
+            if(guess_for_page[c] >= 0)
+                SetPage(4 + c, guess_for_page[c]);
     }
     const std::string str() const
     {
         std::string res;
-        if(p8 >= 0) { char Buf[32]; sprintf(Buf, "[8:%X]",p8); res += Buf; }
-        if(pA >= 0) { char Buf[32]; sprintf(Buf, "[A:%X]",pA); res += Buf; }
-        if(pC >= 0) { char Buf[32]; sprintf(Buf, "[C:%X]",pC); res += Buf; }
-        if(pE >= 0) { char Buf[32]; sprintf(Buf, "[E:%X]",pE); res += Buf; }
+        for(unsigned c=0; c<4; ++c)
+            if(guess_for_page[c] >= 0)
+                { char Buf[32]; sprintf(Buf, "[%X:%X]", c+8, guess_for_page[c]); res += Buf; }
         return res;
     }
 };
@@ -479,37 +490,48 @@ struct SimulCPU
     SimulFlag Sflag;
     std::deque<SimulReg> Stack;
     SimulRegPtr RAM[TRACK_RAM_SIZE];
-    
+
     SimulReg pagereg[4], mmc3cmd;
-    
-    void SetPageReg(unsigned page, SimulReg& v) { pagereg[page].Assign(v); }
+
+    void SetPageReg(unsigned page, SimulReg& v)
+    {
+        if(v.Known() && v.Value() > LastPage) abort();
+        pagereg[page].Assign(v);
+    }
     void SetPageReg(unsigned page, int v, bool weak = false)
     {
         if(weak)
             { SimulReg tmp; tmp.Assign(v); tmp.MakeWeak();
               pagereg[page].Combine(tmp); }
         else
+        {
+            if(v > LastPage) abort();
             pagereg[page].Assign(v);
+        }
     }
-    
+
     void LoadMap() const
     {
-        if(pagereg[0].Known()) SetPage(4, Page0 = pagereg[0].Value());
-        if(pagereg[1].Known()) SetPage(5, Page1 = pagereg[1].Value());
-        if(pagereg[2].Known()) SetPage(6, Page2 = pagereg[2].Value());
-        if(pagereg[3].Known()) SetPage(7, Page3 = pagereg[3].Value());
+        for(unsigned c=0; c<4; ++c)
+            if(pagereg[c].Known())
+                SetPage(c+4, pagereg[c].Value());
     }
-    
-    PageGuess GuessPage45() const
+
+    KnowledgeAboutMapping Get_CurrentKnowledgeAboutMapping() const
     {
-        PageGuess result;
-        if(pagereg[0].Known()) result.p8 = pagereg[0].Value();
-        if(pagereg[1].Known()) result.pA = pagereg[1].Value();
-        if(pagereg[2].Known()) result.pC = pagereg[2].Value();
-        if(pagereg[3].Known()) result.pE = pagereg[3].Value();
+        KnowledgeAboutMapping result;
+        for(unsigned c=0; c<4; ++c)
+            if(pagereg[c].Known())
+                result.guess_for_page[c] = pagereg[c].Value();
         return result;
     }
-    
+    void ImportKnowledgeAboutMapping(const KnowledgeAboutMapping& m)
+    {
+        for(unsigned c=0; c<4; ++c)
+            if(m.guess_for_page[c] >= 0)
+                SetPageReg(c, m.guess_for_page[c], true);
+    }
+
     void Invalidate()
     {
         A.Invalidate();
@@ -532,7 +554,7 @@ struct SimulCPU
         SimulReg tmp; Pop(tmp);
     }
     void Push() { SimulReg tmp; Push(tmp); }
-    
+
     void Combine(const SimulCPU& cpu2)
     {
         A.Combine(cpu2.A);
@@ -545,35 +567,35 @@ struct SimulCPU
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a)
             RAM[a].Combine(cpu2.RAM[a]);
         mmc3cmd.Combine(cpu2.mmc3cmd);
-        
+
         if(Stack.empty())
             Stack = cpu2.Stack;
         else
             Stack.clear();
     }
-    
+
     unsigned ReadRAM(unsigned addr) const
     {
         if(addr >= TRACK_RAM_SIZE || !RAM[addr].Known()) throw ValueNotKnownException();
         return RAM[addr].Value();
     }
-    
+
     void Dump() const
     {
         printf("\t\t\t/* ");
-        
+
         printf("A"); A.Dump();
         printf("X"); X.Dump();
         printf("Y"); Y.Dump();
-        
+
         printf("MAP[");
-        printf("%02X:", Page0); pagereg[0].Dump();
-        printf(",%02X:", Page1); pagereg[1].Dump();
-        printf(",%02X:", Page2); pagereg[2].Dump();
-        printf(",%02X:", Page3); pagereg[3].Dump();
+        printf("%02X:", addr_to_rom(0x8000)/0x2000); pagereg[0].Dump();
+        printf(",%02X:", addr_to_rom(0xA000)/0x2000); pagereg[1].Dump();
+        printf(",%02X:", addr_to_rom(0xC000)/0x2000); pagereg[2].Dump();
+        printf(",%02X:", addr_to_rom(0xE000)/0x2000); pagereg[3].Dump();
         printf(",mmc:"); mmc3cmd.Dump();
         printf("]");
-        
+
         printf("s(%u)", (unsigned)Stack.size());
         printf("Z"); Zflag.Dump();
         printf("S"); Sflag.Dump();
@@ -584,7 +606,7 @@ struct SimulCPU
     {
         ImportMap(true);
     }
-    
+
     void ImportMap(bool weak)
     {
         ImportMap(0, weak);
@@ -595,155 +617,215 @@ struct SimulCPU
     void ImportMap(unsigned page, bool weak)
     {
         //printf("Import map. Orig: "); Dump(); printf("\n");
-        switch(page)
-        {
-            case 0: SetPageReg(0, Page0, weak); break;
-            case 1: SetPageReg(1, Page1, weak); break;
-            case 2: SetPageReg(2, Page2, weak); break;
-            case 3: SetPageReg(3, Page3, weak); break;
-        }
+        SetPageReg(page & 3, addr_to_rom(0x8000 + page*0x2000) / 0x2000, weak);
         //printf("-------> Changed: "); Dump(); printf("\n");
     }
-    
+
     void MapperWrite(unsigned addr, const SimulReg& reg, int at=-1)
     {
-#if 0 /* MAPPER 2 */
-        if(reg.Known())
+        switch(MapperNum)
         {
-            SetPageReg(0, reg.Value()*2+0, false);
-            SetPageReg(1, reg.Value()*2+1, false);
-            
-        }
-        else
-        {
-            pagereg[0].MakeWeak();
-            pagereg[1].MakeWeak();
-        }
-#endif
-#if 0 /* MAPPER 1 */
-        if(!reg.Known())
-        {
-            pagereg[0].MakeWeak();
-            pagereg[1].MakeWeak();
-            pagereg[2].MakeWeak();
-            pagereg[3].MakeWeak();
-            return;
-        }
-        static unsigned regs[4], shift, buffer;
-        unsigned n = (addr >> 13)-4;
-        unsigned v = reg.Value();
-        bool regnew[4] = {false,false,false,false};
-        bool p0_weak=true, p2_weak=true;
-        if(v & 0x80)
-        {
-            regs[0] |= 0x0C;
-            shift=buffer=0;
-            goto DoMMC1_PRG;
-        }
-        buffer |= (v&1) << shift++;
-        if(shift == 5)
-        {
-            regs[n] = buffer;
-            regnew[n] = true;
-            shift=buffer=0;
-            if(n != 2)
-            {
-            DoMMC1_PRG:
-                unsigned offs = regs[1]&0x10;
-                unsigned newp0=0, newp2=2;
-                switch(regs[0] & 0x0C)
+            case 2: // e.g. Rockman, Castlevania
+                if(addr < 0x8000) break;
+                if(reg.Known())
                 {
-                    case 0: case 4:
-                        newp0=(regs[3]&~1)+offs; p0_weak = !regnew[3] || !regnew[1];
-                        newp2=newp0+2;           p2_weak = p0_weak;
-                        break;
-                    case 8:
-                        newp2=regs[3];           p2_weak = !regnew[3];
-                        newp0=offs;              p0_weak = !regnew[1];
-                        break;
-                    case 12:
-                        newp0=regs[3];           p0_weak = !regnew[3];
-                        newp2=0xF+offs;          p2_weak = !regnew[1];
-                        break;
+                    SetPageReg(0, reg.Value()*2+0, false);
+                    SetPageReg(1, reg.Value()*2+1, false);
+
                 }
-                SetPageReg(0, newp0*2  , p0_weak);
-                SetPageReg(1, newp0*2+1, p0_weak);
-                SetPageReg(2, newp2*2  , p2_weak);
-                SetPageReg(3, newp2*2+1, p2_weak);
-                LoadMap();
-            }
-        }
-#endif
-#if 0 /* MMC3, mapper 4 */
-        if(addr >= 0x8000 && addr <= 0xBFFF)
-            switch(addr & 0xE001)
+                else
+                {
+                    pagereg[0].MakeWeak();
+                    pagereg[1].MakeWeak();
+                }
+                break;
+
+            case 1: // MMC1 (Rockman 2, Simon's Quest etc.)
             {
-                case 0x8000:
+                if(addr < 0x8000) break;
+                if(!reg.Known())
+                {
+                    pagereg[0].MakeWeak();
+                    pagereg[1].MakeWeak();
+                    pagereg[2].MakeWeak();
+                    pagereg[3].MakeWeak();
+                    return;
+                }
+                static unsigned regs[4], shift, buffer;
+                unsigned n = (addr >> 13)-4;
+                unsigned v = reg.Value();
+                bool regnew[4] = {false,false,false,false};
+                bool p0_weak=true, p2_weak=true;
+                if(v & 0x80)
+                {
+                    regs[0] |= 0x0C;
+                    shift=buffer=0;
+                    goto DoMMC1_PRG;
+                }
+                buffer |= (v&1) << shift++;
+                if(shift == 5)
+                {
+                    regs[n] = buffer;
+                    regnew[n] = true;
+                    shift=buffer=0;
+                    if(n != 2)
+                    {
+                    DoMMC1_PRG:
+                        unsigned offs = regs[1]&0x10;
+                        unsigned newp0=0, newp2=2;
+                        switch(regs[0] & 0x0C)
+                        {
+                            case 0: case 4:
+                                newp0=(regs[3]&~1)+offs; p0_weak = !regnew[3] || !regnew[1];
+                                newp2=newp0+2;           p2_weak = p0_weak;
+                                break;
+                            case 8:
+                                newp2=regs[3];           p2_weak = !regnew[3];
+                                newp0=offs;              p0_weak = !regnew[1];
+                                break;
+                            case 12:
+                                newp0=regs[3];           p0_weak = !regnew[3];
+                                newp2=0xF+offs;          p2_weak = !regnew[1];
+                                break;
+                        }
+                        SetPageReg(0, newp0*2  , p0_weak);
+                        SetPageReg(1, newp0*2+1, p0_weak);
+                        SetPageReg(2, newp2*2  , p2_weak);
+                        SetPageReg(3, newp2*2+1, p2_weak);
+                        LoadMap();
+                    }
+                }
+                break;
+            }
+
+            case 4: // MMC3
+            {
+                if(addr >= 0x8000 && addr <= 0xBFFF)
+                    switch(addr & 0xE001)
+                    {
+                        case 0x8000:
+                        {
+                            if(reg.Known())
+                            {
+                                unsigned wascmd = mmc3cmd.Value();
+                                unsigned cmd = reg.Value();
+                                unsigned was8 = (wascmd & 0x40) ? 2 : 0;
+                                unsigned is8  = (cmd    & 0x40) ? 2 : 0;
+                                unsigned not8 = 2-is8;
+                                SetPageReg(is8,  pagereg[was8].Value(), reg.Known());
+                                SetPageReg(not8, pagereg[3].Value()-1, false);
+                            }
+                            else
+                            {
+                                pagereg[0].MakeWeak();
+                                pagereg[2].MakeWeak();
+                            }
+                            mmc3cmd.Assign(reg);
+                            break;
+                        }
+                        case 0x8001:
+                        {
+                            if(mmc3cmd.Known())
+                                switch(mmc3cmd.Value() & 7)
+                                {
+                                    case 6:
+                                        SetPageReg( mmc3cmd.Value() & 0x40 ? 2 : 0,
+                                                      reg.Value(), !reg.Known());
+                                        break;
+                                    case 7:
+                                        SetPageReg(1, reg.Value(), !reg.Known());
+                                        break;
+                                }
+                            else
+                            {
+                                pagereg[0].MakeWeak();
+                                pagereg[1].MakeWeak();
+                                pagereg[2].MakeWeak();
+                            }
+                            break;
+                        }
+                    }
+                break;
+            }
+
+            case 24: // VRC6
+            {
+                if(addr >= 0x8000 && addr <= 0x8003)
                 {
                     if(reg.Known())
                     {
-                        unsigned wascmd = mmc3cmd.Value();
-                        unsigned cmd = reg.Value();
-                        unsigned was8 = (wascmd & 0x40) ? 2 : 0;
-                        unsigned is8  = (cmd    & 0x40) ? 2 : 0;
-                        unsigned not8 = 2-is8;
-                        SetPageReg(is8,  pagereg[was8].Value(), reg.Known());
-                        SetPageReg(not8, pagereg[3].Value()-1, false);
+                        SetPageReg(0, reg.Value()*2+0, false);
+                        SetPageReg(1, reg.Value()*2+1, false);
                     }
-                    else
-                    {
-                        pagereg[0].MakeWeak();
-                        pagereg[2].MakeWeak();
-                    }
-                    mmc3cmd.Assign(reg);
-                    break;
-                }
-                case 0x8001:
-                {
-                    if(mmc3cmd.Known())
-                        switch(mmc3cmd.Value() & 7)
-                        {
-                            case 6:
-                                SetPageReg( mmc3cmd.Value() & 0x40 ? 2 : 0,
-                                              reg.Value(), !reg.Known());
-                                break;
-                            case 7:
-                                SetPageReg(1, reg.Value(), !reg.Known());
-                                break;
-                        }
                     else
                     {
                         pagereg[0].MakeWeak();
                         pagereg[1].MakeWeak();
-                        pagereg[2].MakeWeak();
                     }
-                    break;
+                }
+                if(addr >= 0xC000 && addr <= 0xC003)
+                {
+                    if(reg.Known())
+                        SetPageReg(2, reg.Value(), false);
+                    else
+                        pagereg[2].MakeWeak();
+                }
+                break;
+            }
+        }
+    }
+    void MapperProgram(const SimulReg& reg, unsigned param2)
+    {
+        int mul[4] = {0, 0, 0, 0};
+        int add[4] = {0, 0, 0, 0};
+
+        switch(MapperNum)
+        {
+            case 1: // MMC1 (Works nicely for Simon's Quest as well)
+            case 2: // UxROM (Rockman, Castlevania)
+                mul[0] = 2; add[0] = 0;
+                mul[1] = 2; add[1] = 1;
+                break;
+            case 4:
+                mul[(param2 / 0x2000) & 3] = 1;
+                break;
+            case 24:
+                if(param2 == 0xC000)
+                    { mul[2] = 1; add[2] = 0; }
+                else
+                {
+                    mul[0] = 2; add[0] = 0;
+                    mul[1] = 2; add[1] = 1;
+                }
+                break;
+        }
+        bool ok = false;
+        for(int p=0; p<4; ++p)
+            if(mul[p] != 0)
+            {
+                if(!reg.Known())
+                    pagereg[p].MakeWeak();
+                else
+                {
+                    /*fprintf(stderr, "MapperProgram PageReg %u to $%04X\n",
+                        p, 0x2000 * (reg.Value()*mul[p]+add[p]));*/
+                    SetPageReg(p, reg.Value() * mul[p] + add[p], false);
+                    ok = true;
                 }
             }
-#endif
-    }
-    void MapperProgram(const SimulReg& reg)
-    {
-#if 1 /* MAPPER 1*/
-        if(!reg.Known())
+        if(ok)
         {
-            pagereg[0].MakeWeak();
-            pagereg[1].MakeWeak();
-            return;
+            LoadMap();
+
+            printf(";Mapper regs now(");
+            printf("%d:",  addr_to_rom(0x8000)/0x2000); pagereg[0].Dump();
+            printf(",%d:", addr_to_rom(0xA000)/0x2000); pagereg[1].Dump();
+            printf(",%d:", addr_to_rom(0xC000)/0x2000); pagereg[2].Dump();
+            printf(",%d:", addr_to_rom(0xE000)/0x2000); pagereg[3].Dump();
+            printf(")\n");
         }
-        SetPageReg(0, reg.Value()*2+0, false);
-        SetPageReg(1, reg.Value()*2+1, false);
-        LoadMap();
-        
-        printf("Mapper regs now(");
-        printf("%u:", Page0); pagereg[0].Dump();
-        printf(",%u:", Page1); pagereg[1].Dump();
-        printf(",%u:", Page2); pagereg[2].Dump();
-        printf(",%u:", Page3); pagereg[3].Dump();
-        printf(")\n");
-#endif
     }
-    
+
 private:
     //SimulCPU(const SimulCPU&);
 
@@ -756,26 +838,26 @@ struct PointerTableItem
     unsigned stepping;
     bool final;
     int offset;
-    
-    PageGuess page45;
-    
+
+    KnowledgeAboutMapping mapping_knowledge;
+
     std::string nametemplate;
     bool is_default_name;
-    
+
     PointerTableItem()
         : stepping(0), final(true), offset(0),
-          page45(),
+          mapping_knowledge(),
           is_default_name(true) {}
 
     void LoadMemMaps() const
     {
-        rom_to_addr(loptr); // Autoguess mappings
-        
-        if(page45.Known())
+        rom_to_addr(loptr, false, false); // Autoguess mappings
+
+        if(mapping_knowledge.Known())
         {
-            fprintf(stderr, "Reading pointer value at %X (page=%s)\n", 
-                loptr, page45.str().c_str());
-            page45.Set();
+            fprintf(stderr, ";Reading pointer value at %X (page=%s)\n",
+                loptr, mapping_knowledge.str().c_str());
+            mapping_knowledge.Set();
         }
     }
 };
@@ -783,38 +865,38 @@ struct PointerTableItem
 struct State
 {
     CodeLikelihood Type;
-    
+
     SpecialTypes SpecialType;
-    unsigned     SpecialTypeParam;
-    
+    unsigned     SpecialTypeParam, SpecialTypeParam2;
+
     // Code:
     std::set<unsigned/*romptr*/> CalledFrom;
     int FirstJumpFrom;
     int LastJumpFrom;
     int JumpsTo;
-    
+
     std::set<std::string> Labels;
     SimulCPU cpu;
     Disassembly code;
-    
+
     unsigned referred_address;
 
     enum reftype { none=0, lo=1, hi=2 };
-    
+
     struct {
         reftype referred_byte    : 2;
         bool meaning_interpreted : 1;
         bool barrier             : 1;
         char is_referred         : 3; // 1=yes, 2=indexed, 4=data referrals
     };
-    
+
     // Data:
     unsigned ArraySize; // size of 1 element
     unsigned ElemCount; // number of elements
-    
+
     PointerTableItem PtrAddr;
 
-public:    
+public:
     State():
         Type(Unknown),
         SpecialType(None),
@@ -827,7 +909,7 @@ public:
         is_referred(0),
         ArraySize(0), ElemCount(0)
         { }
-    
+
     void JumpedFromInsert(unsigned romptr)
     {
         if(FirstJumpFrom == -1 || romptr < (unsigned)FirstJumpFrom) FirstJumpFrom = romptr;
@@ -838,27 +920,6 @@ private:
     //State(const State&);
 };
 
-struct CompareCodeLikelihood
-{
-    CompareCodeLikelihood(const std::vector<State>& s): results(s) { }
-    
-    static int VisitValue(CodeLikelihood l)
-    {
-        if(!IsVisitWorthy(l)) return 0;
-        if(l >= 50) return 50+CertaintyOf(l);
-        return CertaintyOf(l);
-    }
-    
-    bool operator() (unsigned romptr1, unsigned romptr2) const
-    {
-        CodeLikelihood type1 = results[romptr1].Type;
-        CodeLikelihood type2 = results[romptr2].Type;
-        
-        return VisitValue(type1) > VisitValue(type2);
-    }
-    const std::vector<State>& results;
-};
-
 class Disassembler
 {
 public:
@@ -866,7 +927,7 @@ public:
 private:
     //Disassembler(const Disassembler&);
     //void operator= (const Disassembler&);
-    
+
 public:
     void DiscoverRegions()
     {
@@ -874,14 +935,14 @@ public:
         while(!VisitList.empty())
         {
             SortVisitList();
-            
+
             /* Pick the most likely place to have code */
             unsigned romptr = VisitList[0];
-            
+
             //printf("Try %05X (type %d)\n", romptr, results[romptr].Type);
-            
+
             VisitList.erase(VisitList.begin());
-            
+
             /* If the frontmost item is not code, break the loop. */
             if(results[romptr].Type <= 50)
             {
@@ -912,7 +973,7 @@ public:
                 }
                 break;
             }
-            
+
             /* Visit if not visited yet. */
             if(Visited.find(romptr) == Visited.end())
             {
@@ -927,11 +988,11 @@ public:
                 }
             }
         }
-        
+
         if(DiscoverAddressReferences()) goto Retry;
         if(DiscoverIndexedAddresses()) goto Retry;
     }
-    
+
     bool PossiblyMarkImmediatePointer(State& lo, State& hi)
     {
         unsigned address = lo.code.Param
@@ -947,12 +1008,12 @@ public:
             lo.referred_byte    = State::lo;
             hi.referred_address = address;
             hi.referred_byte    = State::hi;
-            
+
             return true;
         }
         return false;
     }
-    
+
     bool PossiblyMarkDataTable(State& lo, State& hi)
     {
       try {
@@ -963,23 +1024,23 @@ public:
 
             printf("; Possibly discovered a data table at %X ($%X) (page %s)\n",
                    address, lo.code.Param,
-                   lo.cpu.GuessPage45().str().c_str());
+                   lo.cpu.Get_CurrentKnowledgeAboutMapping().str().c_str());
 
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
             MarkDataTable(address+0, address+1, 2,
                           0,//extent
                           0,//offset
-                          lo.cpu.GuessPage45());
+                          lo.cpu.Get_CurrentKnowledgeAboutMapping());
             return true;
         }
-        
+
         if(hi.code.Param > lo.code.Param
         && !((hi.code.Param - lo.code.Param)&1)
         && (hi.code.Param - lo.code.Param)/2 < 0x100)
         {
             lo.cpu.LoadMap();
-            
+
             lo.meaning_interpreted = true;
             hi.meaning_interpreted = true;
             MarkDataTable(addr_to_rom(lo.code.Param),
@@ -987,7 +1048,7 @@ public:
                           1,
                           (hi.code.Param - lo.code.Param)/2, // extent
                           0, //offset
-                          lo.cpu.GuessPage45());
+                          lo.cpu.Get_CurrentKnowledgeAboutMapping());
             return true;
         }
       }
@@ -996,7 +1057,7 @@ public:
       }
         return false;
     }
-    
+
     bool TestDataAddressPoke(State* States[4])
     {
         /*
@@ -1008,7 +1069,7 @@ public:
 
             note: xy denote _any_ registers, not just x and y
         */
-        
+
         #define LDreg(code) \
             (code.Mode != Im && code.Mode != Ay \
                 ? 0 \
@@ -1021,15 +1082,15 @@ public:
              : code.OpCodeId == 45 ? 'X' \
              : code.OpCodeId == 46 ? 'Y' \
              : 0 )
-        
+
         char L0 = LDreg(States[0]->code), S0 = STreg(States[0]->code);
         char L1 = LDreg(States[1]->code), S1 = STreg(States[1]->code);
         char L2 = LDreg(States[2]->code), S2 = STreg(States[2]->code);
         char L3 = LDreg(States[3]->code), S3 = STreg(States[3]->code);
-        
+
         #undef LDreg
         #undef STreg
-        
+
         if(!L0           // first must be a load
         || (!L1 && !S1)  // second must be either
         || (!L2 && !S2)  // third must be either
@@ -1040,10 +1101,10 @@ public:
         {
             return false;
         }
-        
+
         int Load0, Load1;
         int Store0, Store1;
-        
+
         // If both of the first ones are loads
         if(L0 && L1)
         {
@@ -1078,12 +1139,12 @@ public:
             else return false; // Wrong types of stores
         }
         else return false; // Wrong types of loads
-        
+
         if(States[Load0]->code.Mode == Ay && L0 == 'Y') return false;
-        
+
         if(States[Load0]->code.Mode
         != States[Load1]->code.Mode) return false;
-        
+
         if(States[Store0]->code.Param == States[Store1]->code.Param-1)
         {
             // yay, right order!
@@ -1095,9 +1156,9 @@ public:
             std::swap(Store0,Store1);
         }
         else return false; // Not storing to consequential addresses
-        
+
         if(States[Load0]->meaning_interpreted) return false;
-        
+
         switch(States[Load0]->code.Mode)
         {
             case Im:
@@ -1116,7 +1177,7 @@ public:
         }
         return true;
     }
-    
+
     bool TestLoadTableXY(State* States[4])
     {
         /*
@@ -1124,9 +1185,9 @@ public:
                lda  ...,y     ldx ...,y
                tax            lda ...,y
                lda  ...,y     tay
-               tay           
+               tay
         */
-        
+
         unsigned first  = 0; int first_op  = 29; // lda
         unsigned second = 2; int second_op = 29; // lda
 
@@ -1157,38 +1218,38 @@ public:
     bool DiscoverAddressReferences()
     {
         bool found_more_labels = false;
-        
+
         for(unsigned romptr=0; romptr<results.size(); )
         {
             CodeLikelihood type = results[romptr].Type;
             if(type == PartialCode) { ++romptr; continue; }
             if(type <= 50) { ++romptr; continue; }
-            
+
             State&      state0 = results[romptr];
             Disassembly& code0 = state0.code;
             unsigned bytes0 = code0.Bytes;
             unsigned romptr1 = romptr+bytes0;
             if(results[romptr1].Type < 50) { Ignore: romptr=romptr1; continue; }
-            
+
             State&      state1 = results[romptr1];
             Disassembly& code1 = state1.code;
             unsigned bytes1 = code1.Bytes;
             unsigned romptr2 = romptr1+bytes1;
             if(results[romptr2].Type < 50) { goto Ignore; }
-            
+
             State&      state2 = results[romptr2];
             Disassembly& code2 = state2.code;
             unsigned bytes2 = code2.Bytes;
             unsigned romptr3 = romptr2+bytes2;
             if(results[romptr3].Type < 50) { goto Ignore; }
-            
+
             State&      state3 = results[romptr3];
             Disassembly& code3 = state3.code;
             unsigned bytes3 = code3.Bytes;
             unsigned romptr4 = romptr3+bytes3;
-            
+
             State* States[4] = { &state0,&state1,&state2,&state3 };
-            
+
             if(TestDataAddressPoke(States))
                 { Success:
                     found_more_labels = true;
@@ -1196,7 +1257,7 @@ public:
                     continue;
                 }
             if(TestLoadTableXY(States)) { goto Success; }
-            
+
             goto Ignore;
         }
         return found_more_labels;
@@ -1205,19 +1266,19 @@ public:
     bool DiscoverIndexedAddresses()
     {
         bool found_more_labels = false;
-        
+
         for(unsigned romptr=0; romptr<results.size(); )
         {
             CodeLikelihood type = results[romptr].Type;
             if(type == PartialCode) { ++romptr; continue; }
             if(type <= 50) { ++romptr; continue; }
-            
+
             State&      state0 = results[romptr];
             Disassembly& code0 = state0.code;
             unsigned bytes0 = code0.Bytes;
             unsigned romptr1 = romptr+bytes0;
             if(results[romptr1].Type < 50) { Ignore: romptr=romptr1; continue; }
-            
+
             if((code0.Mode == Ax || code0.Mode == Ay)
             && code0.Param >= 0x8000
             && code0.OpCodeId != 44
@@ -1226,22 +1287,23 @@ public:
             && !state0.meaning_interpreted)
             {
                 state0.meaning_interpreted = true;
-                
-                // Which mappings are active at this instruction?
-                rom_to_addr(romptr); // Autoguess...
-                
+
+                // Which mappings are active at this instruction? Guess.
+                rom_to_addr(romptr, false, true);
+
+                // Using those mappings, find the ROM address corresponding to this item.
                 if(MarkAddressMaybeData(addr_to_rom(code0.Param), true, state0))
                 {
                     found_more_labels = true;
                     return true;
                 }
             }
-            
+
             goto Ignore;
         }
         return found_more_labels;
     }
-    
+
     void PrintROMAddressName(unsigned romptr, bool is_jump, unsigned jump_from) const
     {
         if(romptr >= results.size())
@@ -1250,9 +1312,9 @@ public:
             PrintRomAddress(romptr);
             return;
         }
-        
+
         bool annotate = false;
-        
+
         for(std::set<std::string>::const_iterator
             i = results[romptr].Labels.begin();
             i != results[romptr].Labels.end();
@@ -1265,7 +1327,7 @@ public:
             {
                 printf("\t\t; ");
                 PrintRomAddress(romptr);
-                
+
                 bool Thread_Jump = false;
                 if(results[romptr].code.OpCodeId == 27 && results[romptr].code.Mode == Iw)
                     Thread_Jump = true;
@@ -1290,12 +1352,12 @@ public:
         }
         goto Fallback;
     }
-    
+
     void DefineRAM(unsigned addr, const std::string& name)
     {
         RAMaddressNames[addr] = name;
     }
-    
+
     void PrintRAMaddress(unsigned addr, unsigned bytes) const
     {
         std::map<unsigned, std::string>::const_iterator i = RAMaddressNames.find(addr);
@@ -1306,7 +1368,7 @@ public:
         }
         printf("$%0*X", bytes*2, addr);
     }
-    
+
     void PrintAddressName(unsigned addr, bool is_jump = false, unsigned jump_from = 0) const
     {
         try
@@ -1319,25 +1381,32 @@ public:
             //printf("$%04X", addr);
         }
     }
-    
+
     void DumpCode(unsigned romptr, const State& state, unsigned& code_indent) const
     {
         const Disassembly& code = state.code;
-        
+
         unsigned bytes = code.Bytes;
-        
+
         if(code.OpCodeId == 37 || code.OpCodeId == 38) // pla, plp
             if(code_indent > 0)--code_indent;
-        
-        for(unsigned a=0; a<bytes; ++a) printf(" %02X", ROM[romptr+a]);
-        printf(": %*s", (4-bytes)*3 + code_indent, "");
-        
+
+        if(ShowDumpData)
+        {
+            for(unsigned a=0; a<bytes; ++a) printf(" %02X", ROM[romptr+a]);
+            printf(": %*s", (4-bytes)*3 + code_indent, "");
+        }
+        else
+        {
+            printf("%*s", 0 + code_indent, "");
+        }
+
         if(code.OpCodeId == 35 || code.OpCodeId == 36) // pha, php
             ++code_indent;
-        
+
         if(code.OpCodeId == 42) // rts
             if(code_indent >= 2)code_indent -= 2;
-        
+
         printf("%s %s", code.Code, code.Prefix);
         switch(code.Mode)
         {
@@ -1363,7 +1432,7 @@ public:
                 }
                 break;
             }
-            
+
             case Zp: case Zx: case Zy:
             case Ix: case Iy:
             case No: PrintRAMaddress(code.Param, 1); break;
@@ -1382,7 +1451,7 @@ public:
             case Ac: case Il: break;
         }
         printf("%s", code.Suffix);
-        
+
         /*
         if(state.FirstJumpFrom >= 0)
             printf("; FirstJump=$%X", state.FirstJumpFrom);
@@ -1394,7 +1463,7 @@ public:
     void DumpNonCodeRanges() const
     {
         int begin=-1, last=0;
-    
+
         for(unsigned romptr=0; romptr<results.size(); ++romptr)
         {
             int type = results[romptr].Type;
@@ -1402,7 +1471,7 @@ public:
             {
                 if(begin>=0 && last != (int)(romptr-1))
                 {
-                    printf("|| (addr >= 0x%04X && addr <= 0x%04X)\n", begin|0x8000, last|0x8000); 
+                    printf("|| (addr >= 0x%04X && addr <= 0x%04X)\n", begin|0x8000, last|0x8000);
                     begin=-1;
                 }
                 if(begin<0) begin=romptr;
@@ -1411,10 +1480,10 @@ public:
         }
         if(begin>=0)
         {
-            printf("|| (addr >= 0x%04X && addr <= 0x%04X)\n", begin|0x8000, last|0x8000); 
+            printf("|| (addr >= 0x%04X && addr <= 0x%04X)\n", begin|0x8000, last|0x8000);
         }
     }
-    
+
     void MakeNotShortCodeLabelCandidate(unsigned romptr)
     {
         for(std::set<std::string>::const_iterator
@@ -1428,7 +1497,7 @@ public:
         results[romptr].LastJumpFrom = -1;
         results[romptr].FirstJumpFrom = -1;
     }
-    
+
     bool IsBackwardShortCodeLabelCandidate(unsigned romptr) const
     {
         return (results[romptr].is_referred&5) == 1
@@ -1439,7 +1508,7 @@ public:
             && !HasNonShortLabel(romptr, '+') // ignore forward labels
             ;
     }
-    
+
     bool IsForwardShortCodeLabelCandidate(unsigned romptr) const
     {
         return (results[romptr].is_referred&5) == 1
@@ -1451,7 +1520,7 @@ public:
             && !HasNonShortLabel(romptr, '-') // ignore backward labels
             ;
     }
-    
+
     bool HasShortLabel(unsigned romptr, char type) const
     {
         for(std::set<std::string>::const_iterator
@@ -1476,25 +1545,25 @@ public:
         }
         return false;
     }
-    
+
     void AssignMissingBackwardShortCodeLabels()
     {
         bool CandidatesRemain = true;
         for(unsigned length=1; CandidatesRemain && length<=4; ++length)
         {
             CandidatesRemain = false;
-            
+
             const std::string backward_label(length, '-');
-            
+
             std::vector<std::pair<unsigned, std::string> > give_labels;
-            
+
             for(unsigned romptr=0; romptr < results.size(); ++romptr)
             {
                 /* Check if this label may need a short forward label */
                 if(!IsBackwardShortCodeLabelCandidate(romptr)) NextROMptr: continue;
-                
+
                 int LastJump  = results[romptr].LastJumpFrom;
-                
+
                 if(LastJump >= 0 && LastJump >= (int)romptr)
                 {
                     for(int test=romptr; test<=LastJump; ++test)
@@ -1505,7 +1574,7 @@ public:
                             MakeNotShortCodeLabelCandidate(romptr);
                             goto NextROMptr;
                         }
-                        
+
                         /* If there exists a copy of this label
                          * between This and the LastJump, fail.
                          */
@@ -1525,9 +1594,9 @@ public:
                         /* If Test has no jump, it doesn't concern */
                         if(results[test].JumpsTo == -1) continue;
                         if(results[test].JumpsTo > test) continue; // forward jump
-                        
+
                         // this jump may concern us!
-                        
+
                         if(results[test].JumpsTo > (int)romptr
                         && IsBackwardShortCodeLabelCandidate(results[test].JumpsTo)
                           )
@@ -1549,32 +1618,32 @@ public:
                     give_labels.push_back(std::make_pair(romptr, backward_label));
                 }
             }
-            
+
             for(unsigned a=0; a<give_labels.size(); ++a)
                 results[give_labels[a].first].Labels.insert(give_labels[a].second);
-            
+
             fflush(stderr);
         }
     }
-    
+
     void AssignMissingForwardShortCodeLabels()
     {
         bool CandidatesRemain = true;
         for(unsigned length=1; CandidatesRemain && length<=4; ++length)
         {
             CandidatesRemain = false;
-            
+
             const std::string forward_label(length, '+');
-            
+
             std::vector<std::pair<unsigned, std::string> > give_labels;
-            
+
             for(unsigned romptr=0; romptr < results.size(); ++romptr)
             {
                 /* Check if this label may need a short forward label */
                 if(!IsForwardShortCodeLabelCandidate(romptr)) NextROMptr: continue;
-                
+
                 int FirstJump  = results[romptr].FirstJumpFrom;
-                
+
                 if(FirstJump >= 0 && FirstJump < (int)romptr)
                 {
                     for(int test=FirstJump; test < (int)romptr; ++test)
@@ -1585,7 +1654,7 @@ public:
                             MakeNotShortCodeLabelCandidate(romptr);
                             goto NextROMptr;
                         }
-                        
+
                         /* If there exists a copy of this label
                          * between This and the LastJump, fail.
                          */
@@ -1594,7 +1663,7 @@ public:
                             CandidatesRemain = true;
                             goto NextROMptr;
                         }
-                        
+
                         if(test > FirstJump && test < (int)romptr
                         && IsForwardShortCodeLabelCandidate(test))
                         {
@@ -1605,9 +1674,9 @@ public:
                         /* If Test has no jump, it doesn't concern */
                         if(results[test].JumpsTo == -1) continue;
                         if(results[test].JumpsTo <= test) continue; // backward jump
-                        
+
                         // this jump may concern us!
-                        
+
                         if(results[test].JumpsTo < (int)romptr
                         && IsForwardShortCodeLabelCandidate(results[test].JumpsTo)
                           )
@@ -1629,24 +1698,24 @@ public:
                     give_labels.push_back(std::make_pair(romptr, forward_label));
                 }
             }
-            
+
             for(unsigned a=0; a<give_labels.size(); ++a)
                 results[give_labels[a].first].Labels.insert(give_labels[a].second);
-            
+
             fflush(stderr);
         }
     }
-    
+
     void AssignMissingShortCodeLabels()
     {
         AssignMissingBackwardShortCodeLabels();
         AssignMissingForwardShortCodeLabels();
     }
-    
+
     void AssignMissingLabels()
     {
         AssignMissingShortCodeLabels();
-        
+
         /* Assign labels for locations that are missing them */
         for(unsigned romptr=0; romptr<results.size(); ++romptr)
         {
@@ -1661,7 +1730,7 @@ public:
                 {
                     // if it already has a permanent label, skip
                     if(HasNonShortLabel(romptr)) continue;
-                    
+
                     // It's not called from anywhere and has no data referrals,
                     // check if we can manage with a short label
                     if(results[romptr].CalledFrom.empty()
@@ -1689,10 +1758,10 @@ public:
                     }
                     MakeNotShortCodeLabelCandidate(romptr);
                 }
-            
+
                 std::string prefix = "_data_";
                 std::string suffix = "";
-                
+
                 if(results[romptr].Type >= 50)
                 {
                     if(!results[romptr].CalledFrom.empty())
@@ -1700,7 +1769,7 @@ public:
                     else
                         prefix = "_loc_";
                 }
-                
+
                 if(results[romptr].is_referred&2) suffix = "_indexed";
 
                 char Buf[16];
@@ -1709,34 +1778,34 @@ public:
             }
         }
     }
-    
+
     void Dump() const
     {
         unsigned code_indent = 0;
-        
+
         for(unsigned romptr=0; romptr<results.size(); )
         {
             CodeLikelihood type = results[romptr].Type;
-            
+
             unsigned need_nl = 0;
-            
+
             for(std::set<std::string>::const_iterator
                 i = results[romptr].Labels.begin();
                 i != results[romptr].Labels.end();
                 ++i)
             {
                 const std::string& label = *i;
-                
+
                 // Non-local labels reset the indentation.
                 if(label[0] != '+' && label[0] != '-') code_indent = 0;
-                
+
                 if(need_nl && (need_nl + 1 + label.size() > 7))
                     { need_nl=0; putchar('\n'); }
-                
+
                 if(need_nl) { ++need_nl; putchar(' '); }
                 printf("%s", label.c_str());
                 need_nl += label.size();
-                
+
                 if(need_nl > 7) { need_nl=0; putchar('\n'); }
             }
 
@@ -1747,44 +1816,45 @@ public:
                 if(need_nl) putchar('\n');
                 continue;
             }
-            
+
             //printf("(type%4d)", type);
-            
+
             if(type > 50)
             {
                 printf("\t");
-                PrintRomAddress(romptr);
+                if(ShowDumpData)
+                    PrintRomAddress(romptr);
                 printf(" ");
                 need_nl = 0;
-                
+
                 const State& state = results[romptr];
                 const Disassembly& code = state.code;
-                
+
                 unsigned bytes = code.Bytes;
-                
+
                 state.cpu.LoadMap();
-                
+
                 DumpCode(romptr, state, code_indent);
                 //state.cpu.Dump();
                 //if(state.barrier) printf("(barrier)");
-                
+
                 printf("\n");
-                
+
                 romptr += bytes;
-                
+
                 if(state.barrier)
                 {
                     // The line after a barrier always has a label.
-                    
+
                     if(HasNonShortLabel(romptr))
                         printf(";------------------------------------------\n");
                     else //if(results[romptr].Labels.empty())
                         printf("\n");
                 }
-                
+
                 continue;
             }
-            
+
             if(type == UnusedJumpPtr || type == UsedJumpPtr
             || type == UnusedDataPtr || type == UsedDataPtr
             || type == UnusedDataDataPtr || type == UsedDataDataPtr
@@ -1792,14 +1862,19 @@ public:
               )
             {
                 const PointerTableItem& jmp = results[romptr].PtrAddr;
-                
+                rom_to_addr(romptr, false, true);
+
                 if(romptr == jmp.hiptr)
                 {
                     printf("\t");
-                    PrintRomAddress(romptr);
+                    if(ShowDumpData)
+                        PrintRomAddress(romptr);
                     unsigned targetptr = ReadPointerValueAt(jmp);
-                    
-                    printf("  %02X%*s.byte (", ROM[romptr], -11,":");
+
+                    if(ShowDumpData)
+                        printf("  %02X%*s.byte (", ROM[romptr], -11,":");
+                    else
+                        printf("%*s.byte (", 0,"");
                     PrintAddressName(targetptr);
                     if(jmp.offset) printf(" %+d", -jmp.offset);
                     printf(").hi\n");
@@ -1809,27 +1884,35 @@ public:
                 if(romptr == jmp.loptr)
                 {
                     printf("\t");
-                    PrintRomAddress(romptr);
+                    if(ShowDumpData)
+                        PrintRomAddress(romptr);
                     unsigned targetptr = ReadPointerValueAt(jmp);
-                    
+
                     if(jmp.hiptr == jmp.loptr+1)
                     {
-                        printf("  %02X %02X%*s.word (", ROM[romptr], ROM[romptr+1], -8,":");
+                        if(ShowDumpData)
+                            printf("  %02X %02X%*s.word (", ROM[romptr], ROM[romptr+1], -8,":");
+                        else
+                            printf("%*s.word (", 0,"");
+
                         PrintAddressName(targetptr);
                         jmp.LoadMemMaps();
                         if(jmp.offset) printf(" %+d", -jmp.offset);
-                        
+
                         unsigned jmpromptr=0;
                           try { jmpromptr=addr_to_rom(targetptr); }
                           catch(const BadAddressException& ) { }
-                        
-                        printf(") ;%X (%X) (%s)\n", targetptr, jmpromptr, jmp.page45.str().c_str());
-                        
+
+                        printf(") ;%X (%X) (%s)\n", targetptr, jmpromptr, jmp.mapping_knowledge.str().c_str());
+
                         //printf(")\n");
                         romptr += 2;
                         continue;
                     }
-                    printf("  %02X%*s.byte (", ROM[romptr], -11,":");
+                    if(ShowDumpData)
+                        printf("  %02X%*s.byte (", ROM[romptr], -11,":");
+                    else
+                        printf("%*s.byte (", 0,"");
                     PrintAddressName(targetptr);
                     if(jmp.offset) printf(" %+d", -jmp.offset);
                     printf(").lo\n");
@@ -1837,17 +1920,17 @@ public:
                     continue;
                 }
             }
-            
+
             if(IsDataType(type))
             {
                 unsigned a=0;
-                
+
                 std::vector<unsigned char> ok_bytes;
                 ok_bytes.reserve(32);
-                
+
                 unsigned stride = results[romptr].ArraySize;
                 if(stride <= 1) stride = 16;
-                
+
                 while(/*a<linelen &&*/ (romptr+a) < results.size()
                     && IsDataType(results[romptr+a].Type)
                     && (a==0 || results[romptr+a].Labels.empty()))
@@ -1855,20 +1938,21 @@ public:
                     ok_bytes.push_back(ROM[romptr+a]);
                     ++a;
                 }
-                
+
                 while(!ok_bytes.empty())
                 {
                     printf("\t");
-                    PrintRomAddress(romptr);
-                    
+                    if(ShowDumpData)
+                        PrintRomAddress(romptr);
+
                     unsigned linelen = stride;
                     while(linelen*2 <= 16) linelen *= 2;
                     unsigned remain = std::min((size_t)linelen, ok_bytes.size());
                     if(remain < stride) stride = 1;
-                    
+
                     if(stride == 2)
                     {
-                        printf("  %*s.word ", 13,"");
+                        printf("%*s.word ", ShowDumpData?15:0,"");
                         for(unsigned a=0; a<remain; a += 2)
                         {
                             if(a > 0) printf(",");
@@ -1879,7 +1963,7 @@ public:
                     }
                     else
                     {
-                        printf("  %*s.byte ", 13,"");
+                        printf("%*s.byte ", ShowDumpData?15:0,"");
                         for(unsigned a=0; a<remain; a += 1)
                         {
                             if(a > 0) printf(",");
@@ -1893,7 +1977,7 @@ public:
                 }
                 continue;
             }
-            
+
             goto NextByte;
         }
     }
@@ -1902,7 +1986,7 @@ private:
                             int offset,
                             const std::string& tabletype, bool is_default_name,
                             void (Disassembler::*Installer) (const PointerTableItem& ),
-                            PageGuess page45 = PageGuess())
+                            KnowledgeAboutMapping mapping_knowledge = KnowledgeAboutMapping())
     {
         bool first=true;
         while(first || extent > 0)
@@ -1913,21 +1997,21 @@ private:
             i.stepping = stepping;
             i.final = extent != 0;
             i.offset=offset;
-            i.page45 = page45;
-            
+            i.mapping_knowledge = mapping_knowledge;
+
             i.nametemplate    = tabletype;
             i.is_default_name = is_default_name;
-            
+
             (this->*Installer)(i);
-            
+
             if(first)
             {
                 first=false;
-                
+
                 if(extent == 0 || hiptr==loptr+1)
                 {
                     char Name[512];
-                    
+
                     if(!HasNonShortLabel(i.loptr))
                     {
                         sprintf(Name, is_default_name ? "_%s_%04X"   : "%s",
@@ -1958,7 +2042,7 @@ private:
                     }
                 }
             }
-            
+
             loptr += stepping;
             hiptr += stepping;
             if(extent > 0) --extent;
@@ -1966,36 +2050,36 @@ private:
     }
 public:
     #define DeclareMarkingFuncs(funname, installername, defaultname) \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0, PageGuess page45=PageGuess()) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, int offset=0, KnowledgeAboutMapping mapping_knowledge=KnowledgeAboutMapping()) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, defaultname,true, \
-                                   &Disassembler::installername, page45); \
+                                   &Disassembler::installername, mapping_knowledge); \
         } \
-        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0, PageGuess page45=PageGuess()) \
+        void funname(unsigned loptr,unsigned hiptr,unsigned stepping,unsigned extent, const std::string& name, int offset=0, KnowledgeAboutMapping mapping_knowledge=KnowledgeAboutMapping()) \
         { \
             if(CertaintyOf(results[loptr].Type) <= CertaintyOf(MaybeData)) \
                 MarkSomethingTable(loptr,hiptr,stepping,extent,offset, name,false, \
-                                   &Disassembler::installername, page45); \
+                                   &Disassembler::installername, mapping_knowledge); \
         } \
-    
+
     DeclareMarkingFuncs(MarkJumpTable,     InstallJumpPointerTableEntry, "JumpPointerTable")
     DeclareMarkingFuncs(MarkDataTable,     InstallDataPointerTableEntry, "DataPointerTable")
     DeclareMarkingFuncs(MarkJumpJumpTable, InstallJumpJumpPointerTableEntry, "JumpJumpPointerTable")
     DeclareMarkingFuncs(MarkDataDataTable, InstallDataDataPointerTableEntry, "DataDataPointerTable")
-    
+
     #undef DeclareMarkingFuncs
 
-private:    
+private:
 
     bool IsSpecialType(const unsigned romptr, SpecialTypes specialtype) const
-    {                                                    
+    {
         return results[romptr].SpecialType == specialtype;
-    }                                                
+    }
     bool IsJumpTableRoutineWithAppendix(const unsigned romptr) const
-    {                                                
+    {
         return IsSpecialType(romptr, JumpTableRoutineWithAppendix);
-    }    
+    }
     bool IsTerminatedStringRoutine(const unsigned romptr, unsigned& param) const
     {
         bool res = IsSpecialType(romptr, TerminatedStringRoutine);
@@ -2004,9 +2088,9 @@ private:
             param = results[romptr].SpecialTypeParam;
         }
         return res;
-    }    
+    }
     bool IsDataTableRoutineWithXY(const unsigned romptr) const
-    {    
+    {
         return IsSpecialType(romptr, DataTableRoutineWithXY);
     }
     bool IsMapperChangeRoutine(const unsigned romptr, const SimulCPU& cpu,
@@ -2038,44 +2122,47 @@ private:
         }
         return false;
     }
-    
-    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, PageGuess page45 = PageGuess())
+
+    bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, KnowledgeAboutMapping mapping_knowledge = KnowledgeAboutMapping())
     {
-        bool retval = Mark(rom_address, MaybeData, false, page45);
+        bool retval = Mark(rom_address, MaybeData, false, mapping_knowledge);
         results[rom_address].is_referred |= was_indexed ? 2 : 4;
         return retval;
     }
-    
+
     bool MarkAddressMaybeData(unsigned rom_address, bool was_indexed, const State& state)
     {
-        PageGuess page45 = state.cpu.GuessPage45();
-        bool result = MarkAddressMaybeData(rom_address, was_indexed, page45);
+        KnowledgeAboutMapping mapping_knowledge = state.cpu.Get_CurrentKnowledgeAboutMapping();
+        bool result = MarkAddressMaybeData(rom_address, was_indexed, mapping_knowledge);
         results[rom_address].cpu.Combine(state.cpu);
         return result;
     }
-    
+
     void ProcessCode(const unsigned romptr) __attribute__((noinline))
     {
         if(romptr >= results.size()) throw false;
-        
+
         State& state = results[romptr];
-        
-        unsigned addrptr = rom_to_addr(romptr);
-        
+
+        unsigned addrptr = rom_to_addr(romptr, false, false);
         state.cpu.ImportMap(((addrptr >> 13)&3)  , true);
         state.cpu.ImportMap(((addrptr >> 13)&3)^1, true);
-        state.cpu.LoadMap();
 
-        /*printf("Processing %05X (%04X) (", romptr,addrptr);
-        printf("%u:", Page0); state.cpu.pagereg[0].Dump();
-        printf(",%u:", Page1); state.cpu.pagereg[1].Dump();
-        printf(",%u:", Page2); state.cpu.pagereg[2].Dump();
-        printf(",%u:", Page3); state.cpu.pagereg[3].Dump();
+        state.cpu.LoadMap();
+        addrptr = rom_to_addr(romptr, true, true);
+
+        /*
+        printf(";Processing %05X (%04X) (", romptr,addrptr);
+        for(unsigned c=0; c<4; ++c)
+        {
+            printf("%s%X:", c?",":"", addr_to_rom(0x8000+c*0x2000)/0x2000);
+            state.cpu.pagereg[c].Dump();
+        }
         printf(")\n");*/
-        
+
         Disassembly& code = state.code;
-        code = DAsm(addrptr);
-        
+        code = DAsm(addrptr, romptr);
+
         const unsigned NoWhere = 0x7FFFFFFF;
         unsigned Next   = romptr + code.Bytes;
         unsigned Branch = NoWhere;
@@ -2092,15 +2179,12 @@ private:
                 && code.OpCodeId != 46)//sty
                 {
                     /* If it's a read from a ROM address */
-                    if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
-                    || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
-                    || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
-                    || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
-                      )
+                    if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                     {
                         /* It's almost certainly data */
                         unsigned param_romptr = addr_to_rom(code.Param);
-                        
+                        //fprintf(stderr, "%04X->%X\n", code.Param, param_romptr);
+
                         if(code.Mode != Ax && code.Mode != Ay)
                         MarkAddressMaybeData(param_romptr, code.Mode==Ax || code.Mode==Ay,
                             state);
@@ -2109,18 +2193,18 @@ private:
                 break;
             default: ;
         }
-        
+
         if(code.Mode == Iy) // y-indexed data access
         {
             unsigned Pointer = code.Param;
-            
+
             if(Pointer+1 < TRACK_RAM_SIZE)
             {
                 const SimulReg& lobyte = state.cpu.RAM[Pointer+0].GetRef();
                 const SimulReg& hibyte = state.cpu.RAM[Pointer+1].GetRef();
-                
+
                 /* If there was a pointer that was poked into RAM */
-                
+
                 unsigned loptr = lobyte.IsIndexed();
                 unsigned hiptr = hibyte.IsIndexed();
 
@@ -2156,16 +2240,16 @@ private:
             // Indirect jump
             Mark(Next, Unknown);
             Next = NoWhere;
-            
+
             unsigned JumpPointer = code.Param;
-            
+
             bool resolved = false;
             printf("; Indirect jump at romptr=$%X, JumpPointer=$%04X\n", romptr, JumpPointer);
             if(JumpPointer+1 < TRACK_RAM_SIZE)
             {
                 const SimulReg& lobyte = state.cpu.RAM[JumpPointer+0].GetRef();
                 const SimulReg& hibyte = state.cpu.RAM[JumpPointer+1].GetRef();
-                
+
                 unsigned loptr = lobyte.IsIndexed();
                 unsigned hiptr = hibyte.IsIndexed();
 
@@ -2191,14 +2275,14 @@ private:
                         printf("; Discovered a jump table at %X,%X (stepping %u, extent %u)\n",
                             loptr,hiptr, stepping,extent);
                         resolved = true;
-                        
+
                         MarkJumpTable(loptr,hiptr,stepping,extent);
                     }
                 }
             }
-            if(!resolved) printf("; UNRESOLVED indirect jump!\n");
+            if(!resolved) printf("; UNRESOLVED indirect jump at $%X!\n", romptr);
         } // end indirect jump
-        
+
         #define Arithmetic_UpdateFlags(value) \
             do { \
                 unsigned char vval = (value); \
@@ -2224,7 +2308,7 @@ private:
                 else \
                     state.cpu.reg.Assign(state.cpu.source.GetRef()); \
             } while(0)
-        
+
         switch(code.OpCodeId)
         {
             case 127: // non-opcode
@@ -2239,12 +2323,11 @@ private:
             case 27: //jmp
             {
                 if(code.Mode != Iw) break;
-                
-                if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
-                || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
-                || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
-                || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
-                  )
+
+                /* Figure out the jump target ONLY if we know which memory page
+                 * is mapped to the target address
+                 */
+                if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                 {
                     Branch = addr_to_rom(code.Param);
                     if(Branch < results.size())
@@ -2255,7 +2338,15 @@ private:
                     }
                     state.JumpsTo = Branch;
                 }
-                //Next = Unknown;
+                else
+                {
+                    printf("; UNRESOLVED direct jump at $%X to $%04X!\n", romptr, code.Param);
+                }
+
+                /* - TODO: find out why this is not done:
+                Mark(Next, Unknown);
+                Next = NoWhere;
+                */
                 state.barrier = true;
                 break;
             }
@@ -2278,17 +2369,13 @@ private:
                     }
                 }
             */
-                if((code.Param >= 0x8000 && code.Param < 0xA000 && state.cpu.pagereg[0].Known())
-                || (code.Param >= 0xA000 && code.Param < 0xC000 && state.cpu.pagereg[1].Known())
-                || (code.Param >= 0xC000 && code.Param < 0xE000 && state.cpu.pagereg[2].Known())
-                || (code.Param >= 0xE000 && code.Param <0x10000 && state.cpu.pagereg[3].Known())
-                  )
+                if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                 {
                     Branch = addr_to_rom(code.Param);
                     if(Branch >= results.size()) goto failed_jsr;
-                    
+
                     results[Branch].CalledFrom.insert(romptr);
-                    
+
                     if(results[Branch].Type == 50) // not visited, so just copy our state
                     {
                         results[Branch].cpu.Combine(state.cpu);
@@ -2296,38 +2383,38 @@ private:
 
                     Mark(Branch, CertainlyCode, true);
                     results[Branch].cpu.Combine(state.cpu);
-                    
+
                     if(IsJumpTableRoutineWithAppendix(Branch))
                     {
                         MarkJumpTable(Next+0, Next+1, 2, 0);
                         break;
                     }
-                    
+
                     { unsigned param;
                     if(IsTerminatedStringRoutine(Branch, param))
                     {
                         int width      = param / 256;
                         int terminator = param % 256;
-                        
+
                         Mark(Next, CertainlyData);
-                        
+
                         unsigned c = Next;
                         while(ROM[c] != terminator) { results[c].ArraySize = width; c += width; }
                         c += 1; // skip terminator
                         Mark(c, CertainlyCode);
                     } }
-                    
+
                     if(IsDataTableRoutineWithXY(Branch))
                     {
                         if(state.cpu.X.Known() && state.cpu.Y.Known())
                         {
                             unsigned addr = state.cpu.X.Value() + state.cpu.Y.Value()*256;
-                            if(addr >= 0x8000)
+                            if(addr >= 0x8000 && state.cpu.pagereg[(addr/0x2000)&3].Known())
                             {
                                 unsigned jt = addr_to_rom(addr);
                                 MarkAddressMaybeData(jt, true, state);
                                 //printf("At jt %04X: jumptable=%04X\n", romptr, jt);
-                                
+
                                 int x_at = state.cpu.X.GetDefineLocation();
                                 if(x_at >= 0)
                                     { results[x_at].referred_address = addr;
@@ -2343,41 +2430,43 @@ private:
                            }
                         }
                     }
-                    
+
                     SimulReg tmp;
                     if(IsMapperChangeRoutine(Branch, state.cpu, tmp))
                     {
-                        printf("Call to $%X: Reprogramming mapper with ", Branch);
+                        unsigned param2 = results[Branch].SpecialTypeParam2;
+                        printf(";Call from $%X to $%X: Reprogramming mapper (%X) with ",
+                            romptr, Branch, param2);
                         tmp.Dump();
                         printf("\n");
-                        state.cpu.MapperProgram(tmp);
+                        state.cpu.MapperProgram(tmp, param2);
                     }
                 }
                 else
                 {
                 failed_jsr:
-                    printf("Call to $%X: Unknown target\n", code.Param);
+                    printf("; UNRESOLVED direct JSR at $%X to $%04X!\n", romptr, code.Param);
                 }
-                
+
                 Mark(Next, MaybeCode); // there's no guarantee that the jsr will return
                 results[Next].cpu.Combine(state.cpu);
                 state.cpu.Invalidate(); // a function may change any registers
                 break;
             }
-            
+
             case 3: case 5: case 7: case 11:
             case 4: case 8: case 9: case 12:
                 // conditional jumps (bcc,beq,bmi,bvc,
                 //                    bcs,bne,bpl,bvs)
             {
-                Branch = addr_to_rom(code.Param);
+                Branch = romptr + code.Meta;
 
                 if(results[Branch].Type == 50) // not visited, so just copy our state
                 {
                     results[Branch].cpu.Combine(state.cpu);
                 }
                 Mark(Branch, CertainlyCode, true);
-                
+
                 if((code.OpCodeId == 5 && state.cpu.Zflag.Known() &&  state.cpu.Zflag.Value()) // beq
                 || (code.OpCodeId == 8 && state.cpu.Zflag.Known() && !state.cpu.Zflag.Value()) // bne
                 || (code.OpCodeId == 7 && state.cpu.Sflag.Known() &&  state.cpu.Sflag.Value()) // bmi
@@ -2444,7 +2533,7 @@ private:
                     Arithmetic_Invalidate(Y);
 
             // REGISTER LOADS
-            
+
             case 29: // lda
                 Arithmetic_Invalidate(A);
                 switch(code.Mode)
@@ -2452,15 +2541,17 @@ private:
                     case Im: Arithmetic_Assign(A, code.Param); break;
                     case Zx://passthru
                     case Ax:
-                        if(code.Param >= 0x8000) state.cpu.A.AssignXindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.A.AssignXindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zy://passthru
                     case Ay:
-                        if(code.Param >= 0x8000) state.cpu.A.AssignYindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.A.AssignYindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zp://passthru
                     case Ab:
-                        if(code.Param >= 0x8000)
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                         {
                             Arithmetic_Assign(A, BYTE(code.Param));
                             break;
@@ -2481,15 +2572,17 @@ private:
                     case Im: Arithmetic_Assign(X, code.Param); break;
                     case Zx://passthru
                     case Ax:
-                        if(code.Param >= 0x8000) state.cpu.X.AssignXindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.X.AssignXindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zy://passthru
                     case Ay:
-                        if(code.Param >= 0x8000) state.cpu.X.AssignYindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.X.AssignYindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zp://passthru
                     case Ab:
-                        if(code.Param >= 0x8000)
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                         {
                             Arithmetic_Assign(X, BYTE(code.Param));
                             break;
@@ -2510,15 +2603,17 @@ private:
                     case Im: Arithmetic_Assign(Y, code.Param); break;
                     case Zx://passthru
                     case Ax:
-                        if(code.Param >= 0x8000) state.cpu.Y.AssignXindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.Y.AssignXindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zy://passthru
                     case Ay:
-                        if(code.Param >= 0x8000) state.cpu.Y.AssignYindex(addr_to_rom(code.Param), romptr);
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
+                            state.cpu.Y.AssignYindex(addr_to_rom(code.Param), romptr);
                         break;
                     case Zp://passthru
                     case Ab:
-                        if(code.Param >= 0x8000)
+                        if(code.Param >= 0x8000 && state.cpu.pagereg[(code.Param/0x2000)&3].Known())
                         {
                             Arithmetic_Assign(Y, BYTE(code.Param));
                             break;
@@ -2534,7 +2629,7 @@ private:
                 goto CodeContinues;
 
             // REGISTER STORES
-            
+
             case 44: // sta
                 switch(code.Mode)
                 {
@@ -2545,11 +2640,8 @@ private:
                             state.cpu.RAM[code.Param].Assign(state.cpu.A, (int)romptr);
                             break;
                         }
-                        if(code.Param >= 0x8000)
-                        {
-                            state.cpu.MapperWrite(code.Param, state.cpu.A, (int)romptr);
-                            break;
-                        }
+                        state.cpu.MapperWrite(code.Param, state.cpu.A, (int)romptr);
+                        break;
                     default: ;
                 }
                 goto CodeContinues;
@@ -2563,11 +2655,8 @@ private:
                             state.cpu.RAM[code.Param].Assign(state.cpu.X, (int)romptr);
                             break;
                         }
-                        if(code.Param >= 0x8000)
-                        {
-                            state.cpu.MapperWrite(code.Param, state.cpu.X, (int)romptr);
-                            break;
-                        }
+                        state.cpu.MapperWrite(code.Param, state.cpu.X, (int)romptr);
+                        break;
                     default: ;
                 }
                 goto CodeContinues;
@@ -2581,11 +2670,8 @@ private:
                             state.cpu.RAM[code.Param].Assign(state.cpu.Y, (int)romptr);
                             break;
                         }
-                        if(code.Param >= 0x8000)
-                        {
-                            state.cpu.MapperWrite(code.Param, state.cpu.Y, (int)romptr);
-                            break;
-                        }
+                        state.cpu.MapperWrite(code.Param, state.cpu.Y, (int)romptr);
+                        break;
                     default: ;
                 }
                 goto CodeContinues;
@@ -2642,7 +2728,7 @@ private:
             case 48: //sed
             case 49: //sei
                 goto CodeContinues;
-            
+
             default:
                 // Everything else invalidates the whole CPU
                 printf("Default: %u\n", code.OpCodeId);
@@ -2651,7 +2737,7 @@ private:
             CodeContinues:
                 Mark(Next, CertainlyCode);
         }
-        
+
         if(Next   != NoWhere && Next < results.size())
         {
             //printf("Combining $%X (next) from $%X, Result: ", Next, romptr);
@@ -2664,7 +2750,7 @@ private:
             results[Branch].cpu.Combine(state.cpu);
             //results[Branch].cpu.Dump(); printf("\n");
         }
-        
+
         /* Mark the rest of the opcode as PartialCode, but don't
          * add it to the visit list
          */
@@ -2675,20 +2761,32 @@ private:
     }
     void SortVisitList()
     {
-        std::sort(VisitList.begin(), VisitList.end(), CompareCodeLikelihood(results));
+        std::sort(VisitList.begin(), VisitList.end(),
+            [&] (unsigned romptr1, unsigned romptr2) -> bool
+            {
+                // Determine which ones are most certainly code, and process those first.
+                auto VisitValue = [](CodeLikelihood l) -> int
+                {
+                    if(!IsVisitWorthy(l)) return 0;
+                    if(l >= 50) return 50+CertaintyOf(l);
+                    return CertaintyOf(l);
+                };
+                return VisitValue(results[romptr1].Type)
+                     > VisitValue(results[romptr2].Type);
+            });
     }
 
 public:
     bool Mark(unsigned romptr, CodeLikelihood type,
               bool is_referred = false,
-              PageGuess page45 = PageGuess())
+              KnowledgeAboutMapping mapping_knowledge = KnowledgeAboutMapping())
     {
         int certainty = CertaintyOf(type);
-        
+
         //printf("Mark %05X, %d\n", romptr,type);
         CodeLikelihood oldtype = results[romptr].Type;
         int oldcertainty = CertaintyOf(oldtype);
-        
+
         if(certainty >= oldcertainty)
         {
             /*
@@ -2699,16 +2797,13 @@ public:
             }
             */
             results[romptr].Type = type;
-            
+
             // if the referrer knows some mappings, copy them to the referred
-            if(page45.p8 >= 0) results[romptr].cpu.SetPageReg(0, page45.p8, true);
-            if(page45.pA >= 0) results[romptr].cpu.SetPageReg(1, page45.pA, true);
-            if(page45.pC >= 0) results[romptr].cpu.SetPageReg(2, page45.pC, true);
-            if(page45.pE >= 0) results[romptr].cpu.SetPageReg(3, page45.pE, true);
-            
+            results[romptr].cpu.ImportKnowledgeAboutMapping(mapping_knowledge);
+
             if(is_referred) results[romptr].is_referred |= 1;
         }
-        
+
         /* If not visited, put this to the visit list. */
         if(certainty != 0
         && IsVisitWorthy(type)
@@ -2724,10 +2819,10 @@ public:
     {
         results[romptr].ArraySize = size;
     }
-    
+
     bool Mark(unsigned romptr, const std::string& name, CodeLikelihood type,
               bool is_referred = false,
-              PageGuess page45 = PageGuess())
+              KnowledgeAboutMapping mapping_knowledge = KnowledgeAboutMapping())
     {
         //printf("Mark %05X, %d, name %s\n", romptr,type, name.c_str());
 
@@ -2736,25 +2831,25 @@ public:
             std::fprintf(stderr, "Error: romptr=%X, results.size()=%X\n",
                 romptr, (unsigned)results.size());
         }
-        
+
         if(!HasNonShortLabel(romptr)) /* FIXME: do this check only if the name was autogenerated */
         {
             results[romptr].Labels.insert(name);
         }
-        
-        return Mark(romptr, type, is_referred, page45);
+
+        return Mark(romptr, type, is_referred, mapping_knowledge);
     }
 
     unsigned ReadPointerValueAt(const PointerTableItem& i) const
     {
         i.LoadMemMaps();
-        
+
         unsigned ptrlo = ROM[i.loptr];
         unsigned ptrhi = ROM[i.hiptr];
         unsigned addr = ptrlo | (ptrhi << 8);
         return addr + i.offset;
     }
-    
+
     void InstallSomethingPointerTableEntry
         (const PointerTableItem& i,
          CodeLikelihood UsedPtrType,
@@ -2767,12 +2862,12 @@ public:
         )
     {
         /* i informs about the address that points into this table entry */
-        
+
         if(i.loptr == 0x4128 && ptrtypename == "DataTableEntry")
         {
             abort();
         }
-    
+
        /*
         printf("Installing %s %X,%X (%s)\n",
             ptrtypename.c_str(),
@@ -2785,7 +2880,7 @@ public:
                 ptrtypename.c_str(), i.loptr, i.hiptr);
             return;
         }
-        
+
         unsigned pointertarget = ReadPointerValueAt(i);
         try
         {
@@ -2797,7 +2892,7 @@ public:
         catch(const BadAddressException& )
         {
         }
-        
+
         results[i.loptr].Type = UsedPtrType; results[i.loptr].PtrAddr = i;
         results[i.hiptr].Type = UsedPtrType; results[i.hiptr].PtrAddr = i;
 
@@ -2807,31 +2902,31 @@ public:
             PointerTableItem next_pointer = i;
             next_pointer.loptr += i.stepping;
             next_pointer.hiptr += i.stepping;
-            
+
             if(results[next_pointer.loptr].Type == Unknown
             && results[next_pointer.hiptr].Type == Unknown)
             {
                 Mark(next_pointer.loptr, UnusedPtrType);
                 Mark(next_pointer.hiptr, UsedPtrType);
-                
+
                 results[next_pointer.loptr].PtrAddr = next_pointer;
                 results[next_pointer.hiptr].PtrAddr = next_pointer;
             }
         }
     }
-    
+
     void InstallJumpPointer(unsigned romptr) { Mark(romptr, CertainlyCode, true); }
     void InstallJumpPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
-        { Mark(romptr, name, CertainlyCode, true, i.page45); }
+        { Mark(romptr, name, CertainlyCode, true, i.mapping_knowledge); }
     void InstallJumpPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "JumpTableEntry" : i.nametemplate;
         InstallSomethingPointerTableEntry(i, UsedJumpPtr,UnusedJumpPtr, name, &Disassembler::InstallJumpPointer);
     }
-    
+
     void InstallDataPointer(unsigned romptr) { Mark(romptr, MaybeData, true); }
     void InstallDataPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
-        { Mark(romptr, name, MaybeData, true, i.page45); }
+        { Mark(romptr, name, MaybeData, true, i.mapping_knowledge); }
     void InstallDataPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "DataTableEntry" : i.nametemplate;
@@ -2841,22 +2936,22 @@ public:
 
     void InstallJumpJumpPointer(unsigned romptr) { MarkJumpTable(romptr+0,romptr+1,2,0, +1); }
     void InstallJumpJumpPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
-        { MarkJumpTable(romptr+0,romptr+1,2,0, name, +1, i.page45); }
+        { MarkJumpTable(romptr+0,romptr+1,2,0, name, +1, i.mapping_knowledge); }
     void InstallJumpJumpPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "JumpJumpTableEntry" : i.nametemplate;
         InstallSomethingPointerTableEntry(i, UsedJumpJumpPtr,UnusedJumpJumpPtr, name, &Disassembler::InstallJumpJumpPointer);
     }
-    
+
     void InstallDataDataPointer(unsigned romptr) { MarkDataTable(romptr+0,romptr+1,2,0); }
     void InstallDataDataPointer(unsigned romptr, const std::string& name, const PointerTableItem& i)
-        { MarkDataTable(romptr+0,romptr+1,2,0, name, 0, i.page45); }
+        { MarkDataTable(romptr+0,romptr+1,2,0, name, 0, i.mapping_knowledge); }
     void InstallDataDataPointerTableEntry(const PointerTableItem& i)
     {
         const std::string name = i.is_default_name ? "DataDataTableEntry" : i.nametemplate;
         InstallSomethingPointerTableEntry(i, UsedDataDataPtr,UnusedDataDataPtr, name, &Disassembler::InstallDataDataPointer);
     }
-    
+
     void SetSpecialType(unsigned romptr, SpecialTypes type)
     {
         results[romptr].SpecialType = type;
@@ -2866,10 +2961,16 @@ public:
         results[romptr].SpecialType      = type;
         results[romptr].SpecialTypeParam = param;
     }
-    
+    void SetSpecialType(unsigned romptr, SpecialTypes type, unsigned param, unsigned param2)
+    {
+        results[romptr].SpecialType       = type;
+        results[romptr].SpecialTypeParam  = param;
+        results[romptr].SpecialTypeParam2 = param2;
+    }
+
 private:
     std::vector<State> results; /* indexed by romptr */
-    
+
     std::deque<unsigned> VisitList;
     std::set<unsigned> Visited;
 
@@ -2878,17 +2979,16 @@ private:
 
 static void DumpMappings()
 {
-    printf("Mappings:\n");
+    printf(";Mappings:\n");
     for(unsigned a=4; a<8; ++a)
-        printf(" Page %u: %X\n",
-            a, (unsigned)(Pages[a]-ROM));
+        printf("; Page %u: %X\n", a, addr_to_rom(a*0x2000));
 }
 static void DumpVectors()
 {
-    printf("Vectors:\n");
-    printf(" NMI:   %X\n", WORD(0xFFFA));
-    printf(" Reset: %X\n", WORD(0xFFFC));
-    printf(" IRQ:   %X\n", WORD(0xFFFE));
+    printf(";Vectors:\n");
+    printf("; NMI:   %X\n", WORD(0xFFFA));
+    printf("; Reset: %X\n", WORD(0xFFFC));
+    printf("; IRQ:   %X\n", WORD(0xFFFE));
 }
 
 static const std::vector<std::string> Split
@@ -2898,25 +2998,31 @@ static const std::vector<std::string> Split
    bool squish=true)
 {
     std::vector<std::string> words;
-    
-    unsigned a=0, b=text.size(); 
+    auto st = [](char c, char c2) -> bool
+    {
+        if(c2==' ' && c == '\t') return true;
+        return c == c2;
+    };
+
+    std::size_t a=0, b=text.size();
     while(a<b)
     {
-        if(text[a] == separator && squish) { ++a; continue; }
-        if(text[a] == quote)
+        if(st(text[a], separator) && squish) { ++a; continue; }
+
+        if(st(text[a], quote))
         {
             ++a;
-            unsigned start = a;  
-            while(a < b && text[a] != quote) ++a;
+            unsigned start = a;
+            while(a < b && !st(text[a], quote)) ++a;
             words.push_back(text.substr(start, a-start));
-            if(a < b) { ++a; /* skip quote */ }          
+            if(a < b) { ++a; /* skip quote */ }
             continue;
-        }            
-        unsigned start = a;
-        while(a<b && text[a] != separator) ++a;
+        }
+        std::size_t start = a;
+        while(a<b && !st(text[a], separator)) ++a;
         words.push_back(text.substr(start, a-start));
-        if(!squish && a<b && text[a]==separator) ++a;
-        continue;                                    
+        if(!squish && a<b && st(text[a], separator)) ++a;
+        continue;
     }
     return words;
 }
@@ -2933,29 +3039,30 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         while(*ptr == ' ' || *ptr == '\t') ++ptr;
         if(*ptr == '#' || !*ptr || *ptr == '\n') continue;
         std::vector<std::string> tokens = Split(ptr);
-        
+
         #define ParseInt(str) \
             ({ __label__ IntErr; \
-               if(str.empty()) \
+               const auto& s = (str); \
+               if(s.empty()) \
                { IntErr: \
-                 fprintf(stderr, "Invalid integer: %s\n", str.c_str()); goto SyntaxError; } \
-               int result; \
+                 fprintf(stderr, "Invalid integer: %s\n", s.c_str()); goto SyntaxError; } \
+               long result; \
                char* endptr = 0; \
-               if(str[0] == '$') result = strtol(str.c_str()+1,&endptr,16); \
-               else result = strtol(str.c_str(),&endptr,10); \
+               if(s[0] == '$') result = strtol(s.c_str()+1,&endptr,16); \
+               else result = strtol(s.c_str(),&endptr,10); \
                if(*endptr) goto IntErr; \
                result; })
-        
+
         CodeLikelihood type = Unknown;
-        
-        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset,PageGuess page45);
-        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,PageGuess page45);
-        
+
+        void (Disassembler::*MarkFun1)(unsigned lo,unsigned hi,unsigned step,unsigned len,int offset,KnowledgeAboutMapping mapping_knowledge);
+        void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,KnowledgeAboutMapping mapping_knowledge);
+
         if(tokens[0] == "CertainlyCode") { type = CertainlyCode; goto MarkCall; }
         if(tokens[0] == "MaybeCode")     { type = MaybeCode; goto MarkCall; }
         if(tokens[0] == "MaybeData")     { type = MaybeData; goto MarkCall; }
         if(tokens[0] == "CertainlyData") { type = CertainlyData; goto MarkCall; }
-        
+
         if(tokens[0] == "RAM")
         {
             if(tokens.size() != 3) goto SyntaxError;
@@ -2976,9 +3083,9 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             int address    = ParseInt(tokens[1]);
             int width      = ParseInt(tokens[2]);
             int terminator = ParseInt(tokens[3]);
-            
+
             int param = width*256 + terminator;
-            
+
             dasm.SetSpecialType(address, TerminatedStringRoutine, param);
             continue;
         }
@@ -2991,42 +3098,54 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         }
         if(tokens[0] == "MapperChangeRoutine")
         {
-            if(tokens.size() != 4) goto SyntaxError;
+            if(tokens.size() < 3) goto SyntaxError;
             int address = ParseInt(tokens[1]);
             std::string type = tokens[2];
+            unsigned pos    = 3;
+            unsigned param2 = 0;
+        reparse_mapperparam:;
+            if(pos >= tokens.size())
+            {
+                fprintf(stderr, "Invalid parameter type for MapperChangeRoutine: '%s'\n",
+                    type.c_str());
+                goto SyntaxError;
+            }
             if(type == "const")
             {
-                int param   = ParseInt(tokens[3]);
-                dasm.SetSpecialType(address, MapperChangeRoutineWithConst, param);
+                int param   = ParseInt(tokens[pos++]);
+                dasm.SetSpecialType(address, MapperChangeRoutineWithConst, param, param2);
             }
             else if(type == "ram" || type == "RAM")
             {
-                int param   = ParseInt(tokens[3]);
-                dasm.SetSpecialType(address, MapperChangeRoutineWithRAM, param);
+                int param   = ParseInt(tokens[pos++]);
+                dasm.SetSpecialType(address, MapperChangeRoutineWithRAM, param, param2);
             }
             else if(type == "reg")
             {
-                std::string reg = tokens[3];
+                std::string reg = tokens[pos++];
                 int regno = 0;
                 if(reg == "A" || reg == "a") regno=0;
                 else if(reg == "X" || reg == "x") regno=1;
                 else if(reg == "Y" || reg == "y") regno=2;
                 else fprintf(stderr, "Invalid register for MapperChangeRoutine: '%s'\n", reg.c_str());
-                dasm.SetSpecialType(address, MapperChangeRoutineWithReg, regno);
+                dasm.SetSpecialType(address, MapperChangeRoutineWithReg, regno, param2);
             }
             else
-                fprintf(stderr, "Invalid parameter type for MapperChangeRoutine: '%s'\n",
-                    type.c_str());
+            {
+                param2 = ParseInt(type);
+                type   = tokens[pos++];
+                goto reparse_mapperparam;
+            }
             continue;
         }
-        
+
         if(tokens[0] == "JumpTable") { MarkFun1 = &Disassembler::MarkJumpTable; MarkFun2 = &Disassembler::MarkJumpTable; goto MarkTable; }
         if(tokens[0] == "DataTable") { MarkFun1 = &Disassembler::MarkDataTable; MarkFun2 = &Disassembler::MarkDataTable; goto MarkTable; }
         if(tokens[0] == "JumpJumpTable") { MarkFun1 = &Disassembler::MarkJumpJumpTable; MarkFun2 = &Disassembler::MarkJumpJumpTable; goto MarkTable; }
         if(tokens[0] == "DataDataTable") { MarkFun1 = &Disassembler::MarkDataDataTable; MarkFun2 = &Disassembler::MarkDataDataTable; goto MarkTable; }
-        
+
         goto SyntaxError;
-        
+
         if(false)
         {
         MarkCall: ;
@@ -3043,19 +3162,19 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             else goto SyntaxError;
             continue;
         }
-        
+
         if(false)
         {
-            // name loptr hiptr step [length [name [offset [page45]]]]
-            
-        MarkTable:  
+            // name loptr hiptr step [length [name [offset [mapping_knowledge]]]]
+
+        MarkTable:
             if(tokens.size() < 5) goto SyntaxError;
             int lo = ParseInt(tokens[1]);
             int hi = ParseInt(tokens[2]);
             int step = ParseInt(tokens[3]);
             int ext  = ParseInt(tokens[4]);
             //fprintf(stderr, "lo=%X, hi=%X, step=%u, ext=%u\n",lo,hi,step,ext);
-            PageGuess guess;
+            KnowledgeAboutMapping guess;
             if(tokens.size() == 5)
                 (dasm.*MarkFun1)(lo,hi,step,ext, 0,guess);
             else if(tokens.size() == 6)
@@ -3064,61 +3183,66 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
                 (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), guess);
             else if(tokens.size() == 8)
             {
-                int page45 = ParseInt(tokens[7]);
-                guess.p8 = page45*2;
-                guess.pA = page45*2+1;
+                int mapping_knowledge = ParseInt(tokens[7]);
+                guess.guess_for_page[0] = mapping_knowledge*2+0;
+                guess.guess_for_page[1] = mapping_knowledge*2+1;
                 (dasm.*MarkFun2)(lo,hi,step,ext, tokens[5], ParseInt(tokens[6]), guess);
             }
             else goto SyntaxError;
             continue;
         }
-        
+
         if(false)
         {
         SyntaxError:
             fprintf(stderr, "Syntax error in INI: %s\n", Buf);
         }
-        
+
         #undef ParseInt
     }
 }
 
-static void DisAsm(unsigned char* Buf, unsigned size,
-                   FILE* inifile = 0)
+static void DisAsm(unsigned size, FILE* inifile = 0)
 {
     unsigned NPages = size / 0x2000;
 
-    printf("ROM is %p, %u bytes, %u 8k-pages\n", Buf, size, NPages);
-    
-    ROM      = Buf;
+    printf("ROM is %u bytes, %u 8k-pages, mapper %u\n", size, NPages, MapperNum);
+
     LastPage = NPages-1;
-    
-    SetPage(4, Page0 = 0);
-    SetPage(5, Page1 = 1);
-    SetPage(6, Page2 = LastPage-1);
-    SetPage(7, Page3 = LastPage);
-    
+
+    SetPage(4, 0);
+    SetPage(5, 1);
+    SetPage(6, LastPage-1);
+    SetPage(7, LastPage);
+
     DumpMappings();
     DumpVectors();
-    
+
     Disassembler dasm(size);
-    
+
     if(inifile)
         ParseINIfile(inifile, dasm);
-    
+
     try { dasm.Mark(addr_to_rom(WORD(0xFFFA)), "_NMI",   CertainlyCode); } catch(const BadAddressException&){}
     try { dasm.Mark(addr_to_rom(WORD(0xFFFC)), "_Reset", CertainlyCode); } catch(const BadAddressException&){}
     try { dasm.Mark(addr_to_rom(WORD(0xFFFE)), "_IRQ",   CertainlyCode); } catch(const BadAddressException&){}
-    
+
     dasm.DiscoverRegions();
    // dasm.DumpNonCodeRanges();
-   
+
     dasm.AssignMissingLabels();
     dasm.Dump();
 }
 
 int main(int argc, const char*const *argv)
 {
+    if(strcmp(argv[1], "--asm") == 0)
+    {
+        ++argv;
+        --argc;
+        ShowDumpData = false;
+    }
+
     FILE* fp = fopen(argv[1], "rb");
     if(!fp)
     {
@@ -3127,26 +3251,28 @@ int main(int argc, const char*const *argv)
         printf("Usage: clever_disasm <nesfile> [<inifile>]\n");
         return -1;
     }
-    
+
     FILE* ini = argv[2] ? fopen(argv[2], "rb") : 0;
     if(argv[2] && !ini)
     {
         perror(argv[2]);
         goto Usage;
     }
-    
+
     unsigned char hdr[16];
     fread(hdr, 1, sizeof(hdr), fp);
-    
+
+    MapperNum = hdr[7] | (hdr[6] >> 4);
+
     if(hdr[6] & 4) fseek(fp, 512, SEEK_CUR);
-    
+
     unsigned size = hdr[4] * 16384;
-    
-    unsigned char* Buf = new unsigned char[size];
-    fread(Buf, 1, size, fp);
+
+    ROM = new unsigned char[size];
+    fread(ROM, 1, size, fp);
     fclose(fp);
-    
-    DisAsm(Buf, size, ini);
-    
-    delete[] Buf;
+
+    DisAsm(size, ini);
+
+    delete[] ROM;
 }

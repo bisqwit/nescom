@@ -2,6 +2,8 @@
 #include <vector>
 #include <cstring>
 
+#include <unistd.h> // ftruncate
+
 using namespace std;
 
 #include "o65linker.hh"

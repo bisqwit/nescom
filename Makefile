@@ -15,11 +15,11 @@ CPP=$(HOST)gcc
 
 DEPDIRS =
 
-OPTIM=-O3
+OPTIM=-O3 -std=c++0x
 
 CPPFLAGS += -I.
 
-VERSION=1.1.5.2
+VERSION=1.1.6
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
