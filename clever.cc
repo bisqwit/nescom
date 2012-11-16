@@ -1440,6 +1440,14 @@ public:
             case Rl:
                 if(code.Param >= 0x8000)
                 {
+                    // Just in case; mark the current page in the mapper as a reference
+                    // to the current page.
+                    if(code.Param/0x4000 == rom_to_addr(romptr,true,false)/0x4000)
+                    {
+                        SetPage((code.Param/0x4000)*2+0, (romptr/0x4000)*2+0);
+                        SetPage((code.Param/0x4000)*2+1, (romptr/0x4000)*2+1);
+                    }
+
                     bool is_jump = code.OpCodeId == 27 || code.Mode == Rl;
                     PrintAddressName(code.Param, is_jump, romptr);
                 }
@@ -1862,14 +1870,28 @@ public:
               )
             {
                 const PointerTableItem& jmp = results[romptr].PtrAddr;
+
                 rom_to_addr(romptr, false, true);
+
+                unsigned targetptr = ReadPointerValueAt(jmp);
+
+                // Just in case; mark the current page in the mapper as a reference
+                // to the current page.
+                if(targetptr/0x4000 == rom_to_addr(romptr,true,false)/0x4000)
+                {
+                    SetPage((targetptr/0x4000)*2+0, (romptr/0x4000)*2+0);
+                    SetPage((targetptr/0x4000)*2+1, (romptr/0x4000)*2+1);
+                }
+                else
+                {
+                    //results[romptr].cpu.LoadMap();  - already done by rom_to_addr?
+                }
 
                 if(romptr == jmp.hiptr)
                 {
                     printf("\t");
                     if(ShowDumpData)
                         PrintRomAddress(romptr);
-                    unsigned targetptr = ReadPointerValueAt(jmp);
 
                     if(ShowDumpData)
                         printf("  %02X%*s.byte (", ROM[romptr], -11,":");
@@ -1886,7 +1908,6 @@ public:
                     printf("\t");
                     if(ShowDumpData)
                         PrintRomAddress(romptr);
-                    unsigned targetptr = ReadPointerValueAt(jmp);
 
                     if(jmp.hiptr == jmp.loptr+1)
                     {
@@ -1957,6 +1978,7 @@ public:
                         {
                             if(a > 0) printf(",");
                             unsigned val = ok_bytes[a] + ok_bytes[a+1]*256;
+
                             printf("$%04X", val);
                         }
                         remain &= ~1;
@@ -2145,6 +2167,7 @@ private:
         State& state = results[romptr];
 
         unsigned addrptr = rom_to_addr(romptr, false, false);
+
         state.cpu.ImportMap(((addrptr >> 13)&3)  , true);
         state.cpu.ImportMap(((addrptr >> 13)&3)^1, true);
 
@@ -2881,10 +2904,19 @@ public:
             return;
         }
 
-        unsigned pointertarget = ReadPointerValueAt(i);
+        unsigned targetptr = ReadPointerValueAt(i);
+
+        // Just in case; mark the current page in the mapper as a reference
+        // to the current page.
+        if(targetptr/0x4000 == rom_to_addr(i.loptr, true,false)/0x4000)
+        {
+            SetPage((targetptr/0x4000)*2+0, (i.loptr/0x4000)*2+0);
+            SetPage((targetptr/0x4000)*2+1, (i.loptr/0x4000)*2+1);
+        }
+
         try
         {
-            unsigned romptr = addr_to_rom(pointertarget);
+            unsigned romptr = addr_to_rom(targetptr);
             char Buf[512];
             sprintf(Buf, "_%04X", romptr);
             (this->*Installer)(romptr, ptrtypename + Buf, i);
