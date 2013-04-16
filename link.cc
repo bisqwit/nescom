@@ -141,7 +141,10 @@ static void FixupNES(const Object& obj, std::FILE* stream)
     
     unsigned char NESheader[16] =
         {'N', 'E', 'S', 0x1A,
-         ROM_size, VROM_size, ROM_type, ROM_type2,
+         (unsigned char)ROM_size,
+         (unsigned char)VROM_size,
+         (unsigned char)ROM_type,
+         (unsigned char)ROM_type2,
          0,0,0,0,
          0,0,0,0};
 

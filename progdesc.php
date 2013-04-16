@@ -3,6 +3,7 @@
 
 $title = 'Free NES assembler';
 $progname = 'nescom';
+$git = 'git://bisqwit.iki.fi/nescom.git';
 
 $text = array(
    'purpose:1. Purpose' => "

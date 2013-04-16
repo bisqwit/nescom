@@ -142,10 +142,13 @@ static int HandleIPS()
     }
     return 0;
 }
-static int HandleFDS(int num_sides)
+static int HandleFDS(int num_sides, bool headered)
 {
     // Skip the remainder of FDS header
-    { char Buf[16-5]; fread(Buf, 1, sizeof(Buf), stdin); }
+    if(headered)
+        { char Buf[16-5]; fread(Buf, 1, sizeof(Buf), stdin); }
+    else
+        fseek(stdin, -5, SEEK_CUR);
 
     for(int side = 0; side < num_sides; ++side)
     {
@@ -299,7 +302,9 @@ int main(int argc, const char *const *argv)
             if(!strncmp(Buf+2, "o65", 3))
                 return HandleO65();
             if(!strncmp(Buf, "FDS\x1A", 4))
-                return HandleFDS(Buf[4]);
+                return HandleFDS(Buf[4], true);
+            if(!strncmp(Buf, "\1*NIN", 5))
+                return HandleFDS(2, false);
             first = false;
         }
         
