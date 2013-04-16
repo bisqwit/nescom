@@ -1,11 +1,11 @@
 #define SUPPORT_THREADS 0
 #define SUPPORT_FORK 1
 
-#ifdef WIN32
-#undef SUPPORT_THREADS
-#define SUPPORT_THREADS 0
-#undef SUPPORT_FORK
-#define SUPPORT_FORK 0
+#ifdef __WIN32
+# undef SUPPORT_THREADS
+# define SUPPORT_THREADS 0
+# undef SUPPORT_FORK
+# define SUPPORT_FORK 0
 #endif
 
 #include <cstdlib>
@@ -13,11 +13,11 @@
 #include <cstring>
 
 #if SUPPORT_FORK
-#include <sys/wait.h>
-#include <unistd.h>
+# include <sys/wait.h>
+# include <unistd.h>
 #else
-#include <process.h>
-#include <io.h>
+# include <process.h>
+# include <io.h>
 #endif
 
 #if SUPPORT_THREADS

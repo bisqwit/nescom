@@ -1,13 +1,16 @@
 include Makefile.sets
 
-# Building for Windows (opt/xmingw is for Gentoo):
-#HOST=/opt/xmingw/bin/i386-mingw32msvc-
-#LDOPTS += -L/opt/xmingw/lib
+# Building for Windows:
+#HOST=i686-w64-mingw32-
+#LDFLAGS +=
 #CPPFLAGS += -I.
+#LD=$(HOST)g++ -static
+#CXXFLAS += -m32 -march=i386
 
 # Building for native:
 HOST=
 LDFLAGS += -pthread 
+LD=$(HOST)g++
 
 CXX=$(HOST)g++
 CC=$(HOST)gcc
@@ -19,7 +22,7 @@ OPTIM=-O3 -std=c++0x
 
 CPPFLAGS += -I.
 
-VERSION=1.1.6
+VERSION=1.1.7
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -72,23 +75,23 @@ nescom: \
 		dataarea.o \
 		main.o warning.o \
 		romaddr.o
-	$(CXX) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
 
 
 neslink: \
 		link.o o65.o o65linker.o space.o refer.o romaddr.o \
 		object.o dataarea.o \
 		warning.o 
-	$(CXX) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -g -o $@ $^ $(LDFLAGS)
 
 nescom-disasm: disasm
 	ln -f $^ $@
 
 disasm: disasm.o romaddr.o o65.o
-	$(CXX) $(CXXFLAGS) -g -o $@ $^
+	$(LD) $(CXXFLAGS) -g -o $@ $^
 
 clever-disasm: clever.o
-	$(CXX) $(CXXFLAGS) -g -o $@ $^
+	$(LD) $(CXXFLAGS) -g -o $@ $^
 
 clean: FORCE
 	rm -f *.o $(PROGS)
