@@ -1360,6 +1360,9 @@ public:
 
                 //sprintf(strchr(Buf,0), "[$%X=$%02X (%u)]", ahead,ROM[ahead],cycles);
 
+                // This is detection of various commonly used instructions / code snippets
+                // that do nothing but cause a predictable amount of delay.
+
                 if(ROM[ahead] == 0xEA) { cycles += 2; ahead += 1; continue; }
 
                 if(ROM[ahead+0] == 0xA1
@@ -2028,10 +2031,19 @@ public:
 
             if(type == PartialCode)
             {
-            NextByte:
-                ++romptr;
-                if(need_nl) putchar('\n');
-                continue;
+                /* PartialCode happens when the same blob of code is disassembled
+                 * beginning at two different offsets. This can happen for various
+                 * reasons, including JSRs with wrong bank assumptions.
+                 * The outcome is that the beginning of a valid instruction can
+                 * be indicated as the "second byte" of another instruction that
+                 * began in the middle of previous instruction.
+                 * There's a couple of ways to deal with this problem. One is to
+                 * interrupt the previous instruction (display it as .byte)
+                 * and disassemble the new instruction properly. The other choice
+                 * is to disassemble the previous instruction completely, and display
+                 * the partial code as .byte. The latter is what we do here.
+                 */
+                type = MaybeData;
             }
 
             //printf("(type%4d)", type);
@@ -2062,7 +2074,6 @@ public:
                 if(state.barrier)
                 {
                     // The line after a barrier always has a label.
-
                     if(HasNonShortLabel(romptr))
                         printf(";------------------------------------------\n");
                     else //if(results[romptr].Labels.empty())
@@ -2162,9 +2173,9 @@ public:
                 if(stride <= 1) stride = 16;
 
                 while(/*a<linelen &&*/ (romptr+a) < results.size()
-                    && IsDataType(results[romptr+a].Type)
                     && (a==0 || results[romptr+a].Labels.empty()))
                 {
+                    if(a > 0 && !IsDataType(results[romptr+a].Type)) break;
                     ok_bytes.push_back(ROM[romptr+a]);
                     ++a;
                 }
@@ -2209,7 +2220,10 @@ public:
                 continue;
             }
 
-            goto NextByte;
+        NextByte:
+            ++romptr;
+            if(need_nl) putchar('\n');
+            continue;
         }
     }
 private:
@@ -3054,7 +3068,8 @@ private:
          */
         for(unsigned a=1; a<code.Bytes; ++a)
         {
-            results[romptr+a].Type = PartialCode;
+            //results[romptr+a].Type = PartialCode;
+            Mark(romptr+a, PartialCode);
         }
     }
     void SortVisitList()
