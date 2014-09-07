@@ -10,15 +10,21 @@ include Makefile.sets
 # Building for native:
 HOST=
 LDFLAGS += -pthread 
-LD=$(HOST)g++
+#LD=$(HOST)g++
 
 CXX=$(HOST)g++
 CC=$(HOST)gcc
 CPP=$(HOST)gcc
 
+#CXX=$(HOST)clang++
+#CC=$(HOST)clang
+#CPP=$(HOST)clang
+
+LD=$(CXX)
+
 DEPDIRS =
 
-OPTIM=-O3 -std=c++0x
+OPTIM=-O2 -std=c++11
 
 CPPFLAGS += -I.
 
