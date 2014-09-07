@@ -652,27 +652,27 @@ static void DisAsm(unsigned origin, const unsigned char *data,
         static const addrmode longmode = {"%s", "3"};
         static const char info[] =
  // addressing modes
- "AGZZZDDZABAZZIIZ" "CHZZZEEZAKZZZJJZ" "IGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ"
- "AGZZZDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ" "AGZZZDDZABAZLIIZ" "CHZZZEEZAKZZZJJZ"
- "ZGZZDDDZAZAZIIIZ" "CHZZEEFZAKAZZJZZ" "BGBZDDDZABAZIIIZ" "CHZZEEFZAKAZJJKZ"
- "BGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ" "BGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ"
+ "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "IGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ"
+ "AGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "AGBGDDDDABABAIII" "CHHHEEEEAKAKJJJJ"
+ "BGBGDDDDABABIIII" "CHHHEEFFAKAKJJKK" "BGBGDDDDABABIIII" "CHHHEEFFAKAKJJKK"
+ "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ"
  // opcodes
- "brkora" "??????" "???ora" "asl???" "phpora" "asl???" "???ora" "asl???"
- "bplora" "??????" "???ora" "asl???" "clcora" "??????" "???ora" "asl???"
- "jsrand" "??????" "bitand" "rol???" "plpand" "rol???" "bitand" "rol???"
- "bmiand" "??????" "???and" "rol???" "secand" "??????" "???and" "rol???"
- "rtieor" "??????" "???eor" "lsr???" "phaeor" "lsr???" "jmpeor" "lsr???"
- "bvceor" "??????" "???eor" "lsr???" "clieor" "??????" "???eor" "lsr???"
- "rtsadc" "??????" "???adc" "ror???" "plaadc" "ror???" "jmpadc" "ror???"
- "bvsadc" "??????" "???adc" "ror???" "seiadc" "??????" "???adc" "ror???"
- "???sta" "??????" "stysta" "stx???" "dey???" "txa???" "stysta" "stx???"
- "bccsta" "??????" "stysta" "stx???" "tyasta" "txs???" "???sta" "??????"
- "ldylda" "ldx???" "ldylda" "ldx???" "taylda" "tax???" "ldylda" "ldx???"
- "bcslda" "??????" "ldylda" "ldx???" "clvlda" "tsx???" "ldylda" "ldx???"
- "cpycmp" "??????" "cpycmp" "dec???" "inycmp" "dex???" "cpycmp" "dec???"
- "bnecmp" "??????" "???cmp" "dec???" "cldcmp" "??????" "???cmp" "dec???"
- "cpxsbc" "??????" "cpxsbc" "inc???" "inxsbc" "nop???" "cpxsbc" "inc???"
- "beqsbc" "??????" "???sbc" "inc???" "sedsbc" "??????" "???sbc" "inc???";
+ "brkora" "KILslo" "KILora" "aslslo" "phpora" "aslanc" "nopora" "aslslo" //00
+ "bplora" "KILslo" "nopora" "aslslo" "clcora" "nopslo" "nopora" "aslslo" //10
+ "jsrand" "KILrla" "bitand" "rolrla" "plpand" "rolanc" "bitand" "rolrla" //20
+ "bmiand" "KILrla" "nopand" "rolrla" "secand" "noprla" "nopand" "rolrla" //30
+ "rtieor" "KILsre" "nopeor" "lsrsre" "phaeor" "lsrasr" "jmpeor" "lsrsre" //40
+ "bvceor" "KILsre" "nopeor" "lsrsre" "clieor" "nopsre" "nopeor" "lsrsre" //50
+ "rtsadc" "KILrra" "nopadc" "rorrra" "plaadc" "rorarr" "???adc" "rorrra" //60
+ "bvsadc" "KILrra" "nopadc" "rorrra" "seiadc" "noprra" "nopadc" "rorrra" //70
+ "nopsta" "nopsax" "stysta" "stxsax" "deynop" "txaane" "stysta" "stxsax" //80
+ "bccsta" "stxsha" "stysta" "stxsax" "tyasta" "txsshs" "shysta" "shxsha" //90
+ "ldylda" "ldxlax" "ldylda" "ldxlax" "taylda" "taxlax" "ldylda" "ldxlax" //A0
+ "bcslda" "KILlax" "ldylda" "ldxlax" "clvlda" "tsxlas" "ldylda" "ldxlax" //B0
+ "cpycmp" "nopdcp" "cpycmp" "decdcp" "inycmp" "dexsbx" "cpycmp" "decdcp" //C0
+ "bnecmp" "KILdcp" "nopcmp" "decdcp" "cldcmp" "nopdcp" "nopcmp" "decdcp" //D0
+ "cpxsbc" "nopisb" "cpxsbc" "incisb" "inxsbc" "nopsbc" "cpxsbc" "incisb" //E0
+ "beqsbc" "KILisb" "nopsbc" "incisb" "sedsbc" "nopisb" "nopsbc" "incisb";//F0
         unsigned mode=info[*data]-'A'; // addressing mode
         
         if(mode < 12)
