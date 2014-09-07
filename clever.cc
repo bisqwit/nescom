@@ -33,9 +33,13 @@ inline unsigned char& Rd6502(unsigned addr)
 }
 static void SetPage(unsigned addrpage, unsigned rompage)
 {
-    unsigned char* ptr = ROM + (rompage << 13);
     if(rompage > LastPage)
-        abort();
+    {
+        printf("; SetPage(0x%04X,0x%02X) can't work, wrapping\n", addrpage,rompage);
+        rompage %= (LastPage+1);
+    }
+
+    unsigned char* ptr = ROM + (rompage << 13);
     //printf("SetPage(%u,%p)\n", addrpage,ptr);
     Pages[addrpage] = ptr;
 }
@@ -498,7 +502,12 @@ struct SimulCPU
 
     void SetPageReg(unsigned page, SimulReg& v)
     {
-        if(v.Known() && v.Value() > LastPage) abort();
+        if(v.Known() && v.Value() > LastPage)
+        {
+            fprintf(stderr, ";Ignoring call to SetPageReg(%u,%d)\n",
+                page,v.Value());
+            return;
+        }
         pagereg[page].Assign(v);
     }
     void SetPageReg(unsigned page, int v, bool weak = false)
@@ -508,7 +517,12 @@ struct SimulCPU
               pagereg[page].Combine(tmp); }
         else
         {
-            if(v > LastPage) abort();
+            if(v > LastPage)
+            {
+                fprintf(stderr, ";Ignoring call to SetPageReg(%u,%d,weak=%s)\n",
+                    page,v,weak?"true":"false");
+                return;
+            }
             pagereg[page].Assign(v);
         }
     }
@@ -634,6 +648,7 @@ struct SimulCPU
 
     void MapperWrite(unsigned addr, const SimulReg& reg, int at=-1)
     {
+        //printf("MapperWrite(%04X,mappernum=%d)\n", addr,MapperNum);
         switch(MapperNum)
         {
             case 2: // e.g. Rockman, Castlevania
@@ -654,57 +669,74 @@ struct SimulCPU
             case 1: // MMC1 (Rockman 2, Simon's Quest etc.)
             {
                 if(addr < 0x8000) break;
+                printf("; MMC1: At %08X, wrote to %04X: ", at, addr);
+                reg.Dump();
+                printf("\n");
+
                 if(!reg.Known())
                 {
+                    printf("; - Unknown value, just making registers weak\n");
                     pagereg[0].MakeWeak();
                     pagereg[1].MakeWeak();
                     pagereg[2].MakeWeak();
                     pagereg[3].MakeWeak();
                     return;
                 }
-                static unsigned regs[4], shift, buffer;
+                static unsigned regs[4]={0x0E,0x00,0x00,0x00}, counter=0, cache=0;
                 unsigned n = (addr >> 13)-4;
                 unsigned v = reg.Value();
                 bool regnew[4] = {false,false,false,false};
                 bool p0_weak=true, p2_weak=true;
+
+                bool configure = false;
                 if(v & 0x80)
                 {
-                    regs[0] |= 0x0C;
-                    shift=buffer=0;
-                    goto DoMMC1_PRG;
+                    regs[0] = 0x0C;
+                    regnew[0] = true;
+                    configure = true;
                 }
-                buffer |= (v&1) << shift++;
-                if(shift == 5)
+                else
                 {
-                    regs[n] = buffer;
-                    regnew[n] = true;
-                    shift=buffer=0;
-                    if(n != 2)
+                    cache |= (v&1) << counter;
+                    configure = ++counter == 5;
+                    if(configure)
                     {
-                    DoMMC1_PRG:
-                        unsigned offs = regs[1]&0x10;
-                        unsigned newp0=0, newp2=2;
-                        switch(regs[0] & 0x0C)
-                        {
-                            case 0: case 4:
-                                newp0=(regs[3]&~1)+offs; p0_weak = !regnew[3] || !regnew[1];
-                                newp2=newp0+2;           p2_weak = p0_weak;
-                                break;
-                            case 8:
-                                newp2=regs[3];           p2_weak = !regnew[3];
-                                newp0=offs;              p0_weak = !regnew[1];
-                                break;
-                            case 12:
-                                newp0=regs[3];           p0_weak = !regnew[3];
-                                newp2=0xF+offs;          p2_weak = !regnew[1];
-                                break;
-                        }
-                        SetPageReg(0, newp0*2  , p0_weak);
-                        SetPageReg(1, newp0*2+1, p0_weak);
-                        SetPageReg(2, newp2*2  , p2_weak);
-                        SetPageReg(3, newp2*2+1, p2_weak);
-                        LoadMap();
+                        regs[ (addr >> 13) & 3 ] = cache;
+                        regnew[ (addr >> 13) & 3 ] = true;
                     }
+                }
+                if(configure)
+                {
+                    cache = counter = 0;
+                    unsigned newp0 = 0, newp2 = 0;
+
+                    switch( (regs[0] >> 2) & 3)
+                    {
+                        case 0: case 1:
+                            newp0 = (regs[3] & 0xE); p0_weak = !regnew[3] || !regnew[0];
+                            newp2 = newp0+1;         p2_weak = p0_weak;
+                            break;
+
+                        case 2:
+                            newp0 = 0;              p0_weak = !regnew[0];
+                            newp2 = regs[3] & 0xF;  p2_weak = !regnew[3];
+                            break;
+
+                        case 3:
+                            newp0 = regs[3] & 0xF;  p0_weak = !regnew[3];
+                            newp2 = LastPage/2;     p2_weak = !regnew[0];
+                            break;
+                    }
+                    printf("; - Configuring %d(%s) and %d(%s) - newness:%d,%d,%d,%d\n",
+                        newp0,p0_weak?"weak":"strong",
+                        newp2,p2_weak?"weak":"strong",
+                        regnew[0],regnew[1],regnew[2],regnew[3]); fflush(stdout);
+
+                    SetPageReg(0, newp0*2  , p0_weak);
+                    SetPageReg(1, newp0*2+1, p0_weak);
+                    SetPageReg(2, newp2*2  , p2_weak);
+                    SetPageReg(3, newp2*2+1, p2_weak);
+                    LoadMap();
                 }
                 break;
             }
@@ -1333,6 +1365,8 @@ public:
         // $A2 x A0 y 88 D0 FD CA D0 FA  YX-delay = 4 + y*5-1 + (x-1) * (5+256*5-1) + 5-1 = 1284*x + y*5 - 1277 cycles
         // $A0 y A0 x CA D0 FD 88 D0 FA  XY-delay = opposite
 
+        // $A9 x 85 00 EA C6 00 D0 FB    A-delay = 2+3+ (2+5+3)*x - 1 = 10*x + 4 cycles
+
         for(unsigned romptr=0; romptr<results.size(); )
         {
             CodeLikelihood type = results[romptr].Type;
@@ -1413,6 +1447,14 @@ public:
                 && ROM[ahead+7] == 0x88
                 && ROM[ahead+8] == 0xD0
                 && ROM[ahead+9] == 0xFA) { cycles += m(ROM[ahead+1]) * 1284 + m(ROM[ahead+3]) * 5 - 1277; ahead += 10; continue; }
+
+                if(ROM[ahead+0] == 0xA9
+                && ROM[ahead+2] == 0x85
+                && ROM[ahead+3] == ROM[ahead+6]
+                && ROM[ahead+4] == 0xEA
+                && ROM[ahead+5] == 0xC6
+                && ROM[ahead+7] == 0xD0
+                && ROM[ahead+8] == 0xFB) { cycles += m(ROM[ahead+1]) * 10 + 4; ahead += 9; continue; }
 
                 if(ROM[ahead+0] == 0x20)
                 {
@@ -2786,13 +2828,19 @@ private:
             case 6: // bit (?)
             case 20: // dec
             case 25: // eor
-            case 33: // lsr
             case 34: // ora
             case 39: // rol
             case 40: // ror
             case 43: // sbc
+            UnkA:
                 Arithmetic_Invalidate(A);
                 goto CodeContinues;
+
+            case 33: // lsr
+                if(code.Mode != Ac) goto UnkA;
+                if(state.cpu.A.Known()) state.cpu.A.Assign(state.cpu.A.Value() >> 1); // LSR A, used in Mapper reprogramming
+                goto CodeContinues;
+
             case 21: // dex
             case 23: // inx
                 /*if(state.cpu.X.Known())
