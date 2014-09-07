@@ -496,7 +496,7 @@ struct SimulCPU
     std::deque<SimulReg> Stack;
     SimulRegPtr RAM[TRACK_RAM_SIZE];
 
-    SimulReg pagereg[4], mmc3cmd;
+    SimulReg pagereg[4], mmc3cmd,mmc3lo;
 
     void SetPageReg(unsigned page, SimulReg& v)
     {
@@ -590,6 +590,7 @@ struct SimulCPU
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a)
             RAM[a].Combine(cpu2.RAM[a]);
         mmc3cmd.Combine(cpu2.mmc3cmd);
+        mmc3lo.Combine(cpu2.mmc3lo);
 
         if(Stack.empty())
             Stack = cpu2.Stack;
@@ -741,51 +742,33 @@ struct SimulCPU
 
             case 4: // MMC3
             {
-                if(addr >= 0x8000 && addr <= 0xBFFF)
-                    switch(addr & 0xE001)
+                if(addr >= 0x8000 && addr <= 0xFFFF)
+                {
+                    switch((addr & 1) + ((addr >> 12) & 6))
                     {
-                        case 0x8000:
-                        {
-                            if(reg.Known())
-                            {
-                                unsigned wascmd = mmc3cmd.Value();
-                                unsigned cmd = reg.Value();
-                                unsigned was8 = (wascmd & 0x40) ? 2 : 0;
-                                unsigned is8  = (cmd    & 0x40) ? 2 : 0;
-                                unsigned not8 = 2-is8;
-                                SetPageReg(is8,  pagereg[was8].Value(), reg.Known());
-                                SetPageReg(not8, pagereg[3].Value()-1, false);
-                            }
-                            else
-                            {
-                                pagereg[0].MakeWeak();
-                                pagereg[2].MakeWeak();
-                            }
-                            mmc3cmd.Assign(reg);
-                            break;
-                        }
-                        case 0x8001:
-                        {
-                            if(mmc3cmd.Known())
-                                switch(mmc3cmd.Value() & 7)
-                                {
-                                    case 6:
-                                        SetPageReg( mmc3cmd.Value() & 0x40 ? 2 : 0,
-                                                      reg.Value(), !reg.Known());
-                                        break;
-                                    case 7:
-                                        SetPageReg(1, reg.Value(), !reg.Known());
-                                        break;
-                                }
-                            else
-                            {
-                                pagereg[0].MakeWeak();
-                                pagereg[1].MakeWeak();
-                                pagereg[2].MakeWeak();
-                            }
-                            break;
-                        }
+                        case 0: mmc3cmd.Assign(reg); goto update_mmc3; // bank select
+                        case 1: if(mmc3cmd.Known()) switch(mmc3cmd.Value() & 7)
+                                                    {
+                                                        case 6: mmc3lo.Assign(reg); goto update_mmc3;
+                                                        case 7: SetPageReg(1, reg.Value(), !reg.Known()); break;
+                                                    }
+                                else { pagereg[1].MakeWeak(); goto update_mmc3; }
+                                break;
                     }
+                    break;
+                update_mmc3:
+                    if(mmc3cmd.Known())
+                    {
+                        bool bit40 = mmc3cmd.Value() & 0x40;
+                        SetPageReg(bit40 ? 2 : 0, mmc3lo.Value(), !mmc3lo.Known());
+                        SetPageReg(bit40 ? 0 : 2, false);
+                    }
+                    else
+                    {
+                        pagereg[0].MakeWeak();
+                        pagereg[2].MakeWeak();
+                    }
+                }
                 break;
             }
 
