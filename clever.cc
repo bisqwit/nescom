@@ -182,17 +182,15 @@ static unsigned char ad[512]=
 
 struct Disassembly
 {
-    const char*      Code;
-    unsigned         Bytes;
-    Addressing_Modes Mode;
-    int              Param; // 6502 addr, not ROM addr */
-    const char*      Prefix;
-    const char*      Suffix;
-    int              Meta;
+    const char*      Code  = "";
+    unsigned         Bytes = 0;
+    Addressing_Modes Mode  = No;
+    int              Param = 0; // 6502 addr, not ROM addr */
+    const char*      Prefix = "";
+    const char*      Suffix = "";
+    int              Meta = 0;
 
-    int OpCodeId;
-
-    Disassembly(): Code(""),Bytes(0),Mode(No),Param(0),Prefix(""),Suffix(""),Meta(0) {}
+    int OpCodeId = -1;
 };
 
 /* DAsm: Disassemble at given 6502 address.
@@ -907,16 +905,16 @@ struct PointerTableItem
 
 struct State
 {
-    CodeLikelihood Type;
+    CodeLikelihood Type = Unknown;
 
-    SpecialTypes SpecialType;
+    SpecialTypes SpecialType = None;
     unsigned     SpecialTypeParam, SpecialTypeParam2;
 
     // Code:
     std::set<unsigned/*romptr*/> CalledFrom;
-    int FirstJumpFrom;
-    int LastJumpFrom;
-    int JumpsTo;
+    int FirstJumpFrom = -1;
+    int LastJumpFrom = -1;
+    int JumpsTo = -1;
 
     std::set<std::string> Labels;
     std::vector<std::string> Comments;
@@ -928,30 +926,24 @@ struct State
     enum reftype { none=0, lo=1, hi=2, lo_abs=3, hi_abs=4 };
 
     struct {
-        reftype referred_byte    : 3;
-        bool meaning_interpreted : 1;
-        bool barrier             : 1;
-        char is_referred         : 3; // 1=yes, 2=indexed, 4=data referrals
+        reftype referred_byte    : 3;// = none;
+        bool meaning_interpreted : 1;// = false;
+        bool barrier             : 1;// = false;
+        char is_referred         : 3;// = 0; // 1=yes, 2=indexed, 4=data referrals
     };
 
     // Data:
-    unsigned ArraySize; // size of 1 element
-    unsigned ElemCount; // number of elements
+    unsigned ArraySize = 0; // size of 1 element
+    unsigned ElemCount = 0; // number of elements
 
     PointerTableItem PtrAddr;
 
 public:
     State():
-        Type(Unknown),
-        SpecialType(None),
-        FirstJumpFrom(-1),
-        LastJumpFrom(-1),
-        JumpsTo(-1),
         referred_byte(none),
         meaning_interpreted(false),
         barrier(false),
-        is_referred(0),
-        ArraySize(0), ElemCount(0)
+        is_referred(0)
         { }
 
     void JumpedFromInsert(unsigned romptr)
