@@ -186,7 +186,7 @@ nescom produces relocatable object files (O65),
 non-relocatable patch files (IPS), or raw files.<br>
 The O65 file format has been
 <a href=\"http://www.google.com/search?q=6502+binary+relocation+format\">documented</a>
-by Andr�Fachat
+by André Fachat
 for the <a href=\"http://www.google.fi/search?q=xa65\">XA65</a> project.
 
 ", 'ips:1.1. IPS output support' => "
