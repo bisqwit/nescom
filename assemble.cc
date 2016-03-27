@@ -93,7 +93,7 @@ namespace
 
                 if(e != p.exp.get())
                 {
-                    boost::shared_ptr<expression> tmp(e);
+                    std::shared_ptr<expression> tmp(e);
 
                     //fprintf(stderr, "  e sha: %p (%s)\n", (void*)e, e->Dump().c_str());
                     //fprintf(stderr, "    tmp: %p (%s)\n", (void*)tmp.get(), tmp->Dump().c_str());
@@ -447,7 +447,7 @@ GotLabel:
                                         choice.parameters.push_back(std::make_pair(1, 0x4C));
 
                                         expression* e = new expr_label(NopLabel);
-                                        boost::shared_ptr<expression> tmp(e);
+                                        std::shared_ptr<expression> tmp(e);
 
                                         p1.prefix = FORCE_ABSWORD;
                                         p1.exp.swap(tmp);

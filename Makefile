@@ -24,12 +24,12 @@ LD=$(CXX)
 
 DEPDIRS =
 
-OPTIM=-Ofast -std=c++11
+OPTIM=-Ofast -std=c++14
 # -fsanitize=address
 
 CPPFLAGS += -I.
 
-VERSION=1.1.7
+VERSION=1.1.8
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \

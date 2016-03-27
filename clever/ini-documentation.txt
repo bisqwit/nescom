@@ -3,6 +3,7 @@
 	syntax =
 		{	comment		CRLF
 		|	definition	CRLF
+		|	CRLF
 		}	EOF;
 
 	comment =

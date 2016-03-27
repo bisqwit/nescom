@@ -237,13 +237,14 @@ Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversion
 Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.<br>
 Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.<br>
 May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.<br>
-Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.
+Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.<br>
+Mar 27 2016; 1.1.8 added xa65 obj file support, and no longer depends on libboost.<br>
 
 ", 'bugs:1. Known bugs' => "
 
 <ul>
  <li><code>#include</code>d files aren't being properly preprocessed.</li>
- <li>memory mapping hasn't been quite designed yet.</li>
+ <li>memory mapping is not properly designed yet.</li>
 </ul>
 
 ", 'copying:1. Copying' => "
@@ -260,7 +261,7 @@ me to enhance the program.
 ", 'requirements:1. Requirements' => "
 
 nescom uses <a href=\"http://gcc.gnu.org/\">GCC</a> as a slave in
-the preprocessing phase. Therefore, gcc must be installed and found
+the preprocessing phase. Therefore, GCC must be installed and found
 in the PATH when running nescom.
 
 ");

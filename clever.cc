@@ -3100,6 +3100,10 @@ public:
         CodeLikelihood oldtype = results[romptr].Type;
         int oldcertainty = CertaintyOf(oldtype);
 
+        if(type == CertainlyCode && (oldtype == PartialCode
+                                  || oldtype == CertainlyData))
+            certainty = oldcertainty / 2;
+
         if(certainty >= oldcertainty)
         {
             /*
@@ -3385,6 +3389,7 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,KnowledgeAboutMapping mapping_knowledge);
 
         if(tokens[0] == "CertainlyCode") { type = CertainlyCode; goto MarkCall; }
+        if(tokens[0] == "PartialCode")   { type = PartialCode; goto MarkCall; }
         if(tokens[0] == "MaybeCode")     { type = MaybeCode; goto MarkCall; }
         if(tokens[0] == "MaybeData")     { type = MaybeData; goto MarkCall; }
         if(tokens[0] == "CertainlyData") { type = CertainlyData; goto MarkCall; }

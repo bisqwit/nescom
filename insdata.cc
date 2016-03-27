@@ -77,7 +77,6 @@ const struct ins ins[] =
   { "jmp",  "--'--'--'--'--'--'--'--'4C'--'--'6C"},
   { "jsr",  "--'--'--'--'--'--'--'--'20'--'--'--"},
   { "kil02","--'02'--'--'--'--'--'12'--'--'--'--"}, // Unofficial instruction
-  { "kil04","--'--'--'04'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "kil22","--'22'--'--'--'--'--'32'--'--'--'--"}, // Unofficial instruction
   { "kil42","--'42'--'--'--'--'--'52'--'--'--'--"}, // Unofficial instruction
   { "kil62","--'62'--'--'--'--'--'72'--'--'--'--"}, // Unofficial instruction
@@ -91,6 +90,7 @@ const struct ins ins[] =
   { "ldx",  "--'A2'--'A6'--'B6'--'--'AE'--'BE'--"}, // doesn't support "ldx addr,x"
   { "ldy",  "--'A0'--'A4'B4'--'--'--'AC'BC'--'--"}, // doesn't support "ldy addr,y"
   { "lsr",  "4A'--'--'46'56'--'--'--'4E'5E'--'--"},
+  { "nop04","--'--'--'04'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nop1A","1A'--'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nop14","--'--'--'--'14'--'--'--'0C'1C'--'--"}, // Unofficial instruction
   { "nop3A","3A'--'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
