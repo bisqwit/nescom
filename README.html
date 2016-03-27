@@ -23,7 +23,7 @@ SMALL    {font-size:70%}
   <h1>Free NES assembler</h1>
   <h2 class=level2> 0. Contents </h2>
   
-  This is the documentation of nescom-1.1.7.
+  This is the documentation of nescom-1.1.8.
 <div class=toc><table cellspacing=0 cellpadding=0 class=toc><tr><td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;1. <a href="#purpose">Purpose</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1. <a href="#history">History</a><br>&nbsp;&nbsp;&nbsp;2. <a href="#linker">Linker</a><br>&nbsp;&nbsp;&nbsp;3. <a href="#syntax">Supported syntax</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.1. <a href="#ops">Mnemonics</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.2. <a href="#addrmodes">Addressing modes</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.3. <a href="#opsize">Operand size control</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.4. <a href="#eval">Expression evaluation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.5. <a href="#segs">Segments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.6. <a href="#comments">Comments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.7. <a href="#separation">Command separation</a><br></td>
 <td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.8. <a href="#reloc">Code pointer relocation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.9. <a href="#branchlabels">Branch labels</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.10. <a href="#cpp">Preprocessor</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.11. <a href="#objfile">Object file format</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.12. <a href="#ips">IPS output support</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.13. <a href="#linkage">Linkage selection</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#changelog">Changelog</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#bugs">Known bugs</a><br>&nbsp;&nbsp;&nbsp;6. <a href="#copying">Copying</a><br>&nbsp;&nbsp;&nbsp;7. <a href="#requirements">Requirements</a><br>&nbsp;&nbsp;&nbsp;8. <a href="#download">Downloading</a><br></td>
 </tr></table></div><H2 id="purpose" class="level2"><a name="purpose"></a>1. Purpose</H2><div class="level2" id="divpurpose">
@@ -206,7 +206,7 @@ nescom produces relocatable object files (O65),
 non-relocatable patch files (IPS), or raw files.<br>
 The O65 file format has been
 <a href="http://www.google.com/search?q=6502+binary+relocation+format">documented</a>
-by Andr�Fachat
+by André Fachat
 for the <a href="http://www.google.fi/search?q=xa65">XA65</a> project.
 
 </div><H3 id="ips" class="level3"><a name="ips"></a>3.12. IPS output support</H3><div class="level3" id="divips">
@@ -257,13 +257,14 @@ Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversion
 Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.<br>
 Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.<br>
 May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.<br>
-Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.
+Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.<br>
+Mar 27 2016; 1.1.8 added xa65 obj file support, and no longer depends on libboost.<br>
 
 </div><H2 id="bugs" class="level2"><a name="bugs"></a>5. Known bugs</H2><div class="level2" id="divbugs">
 
 <ul>
  <li><code>#include</code>d files aren't being properly preprocessed.</li>
- <li>memory mapping hasn't been quite designed yet.</li>
+ <li>memory mapping is not properly designed yet.</li>
 </ul>
 
 </div><H2 id="copying" class="level2"><a name="copying"></a>6. Copying</H2><div class="level2" id="divcopying">
@@ -280,7 +281,7 @@ me to enhance the program.
 </div><H2 id="requirements" class="level2"><a name="requirements"></a>7. Requirements</H2><div class="level2" id="divrequirements">
 
 nescom uses <a href="http://gcc.gnu.org/">GCC</a> as a slave in
-the preprocessing phase. Therefore, gcc must be installed and found
+the preprocessing phase. Therefore, GCC must be installed and found
 in the PATH when running nescom.
 
 </div><H2 id="download" class="level2"><a name="download"></a>8. Downloading</H2><div class="level2" id="divdownload">
@@ -288,9 +289,9 @@ in the PATH when running nescom.
    is at <a href="http://iki.fi/bisqwit/source/nescom.html">http://iki.fi/bisqwit/source/nescom.html</a>.<br>
    Check there for new versions.
 <p>Additionally, the most recent source code (bleeding edge) for nescom can also be downloaded by cloning the Git repository by:<ul style="margin-left:3em;margin-top:0px"><li><code> git clone <a href="git://bisqwit.iki.fi/nescom.git">git://bisqwit.iki.fi/nescom.git</a></code></li><li><code> git checkout origin/release -b release</code></li><li><code> git checkout origin/master  -b master</code></li></ul></p></div> <p align=right><small>Generated from
-       <tt>progdesc.php</tt> (last updated: Tue, 16 Apr 2013 11:50:45 +0300)<br>
-  with <tt>docmaker.php</tt> (last updated: Tue, 16 Apr 2013 11:50:45 +0300)<br>
-  at Tue, 16 Apr 2013 11:50:45 +0300</small>
+       <tt>progdesc.php</tt> (last updated: Sun, 27 Mar 2016 21:19:10 +0300)<br>
+  with <tt>docmaker.php</tt> (last updated: Sun, 27 Mar 2016 21:19:10 +0300)<br>
+  at Sun, 27 Mar 2016 21:19:10 +0300</small>
  </p>
 </body>
 </html>

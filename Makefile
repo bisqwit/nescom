@@ -10,19 +10,26 @@ include Makefile.sets
 # Building for native:
 HOST=
 LDFLAGS += -pthread 
-LD=$(HOST)g++
+#LD=$(HOST)g++
 
 CXX=$(HOST)g++
 CC=$(HOST)gcc
 CPP=$(HOST)gcc
 
+#CXX=$(HOST)clang++
+#CC=$(HOST)clang
+#CPP=$(HOST)clang
+
+LD=$(CXX)
+
 DEPDIRS =
 
-OPTIM=-O3 -std=c++0x
+OPTIM=-Ofast -std=c++14
+# -fsanitize=address
 
 CPPFLAGS += -I.
 
-VERSION=1.1.7
+VERSION=1.1.8
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \

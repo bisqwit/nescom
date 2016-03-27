@@ -28,21 +28,21 @@ namespace
         typedef std::pair<unsigned, struct ins_parameter> paramtype;
         std::vector<paramtype> parameters;
         bool is_certain;
-        
+
     public:
         OpcodeChoice(): parameters(), is_certain(false) { }
     };
 
     typedef std::vector<OpcodeChoice> ChoiceList;
-    
+
     std::list<std::string> DefinedBranchLabels;
-    
+
     void CreateNewPrevBranch(unsigned length)
     {
         static unsigned BranchNumber = 0;
         char Buf[128];
         std::sprintf(Buf, "$PrevBranch%u$%u", length,++BranchNumber);
-        
+
         DefinedBranchLabels.push_back(PrevBranchLabel[length] = Buf);
     }
     void CreateNewNextBranch(unsigned length)
@@ -50,7 +50,7 @@ namespace
         static unsigned BranchNumber = 0;
         char Buf[128];
         std::sprintf(Buf, "$NextBranch%u$%u", length,++BranchNumber);
-        
+
         DefinedBranchLabels.push_back(NextBranchLabel[length] = Buf);
     }
     const std::string CreateNopLabel()
@@ -58,24 +58,24 @@ namespace
         static unsigned BranchNumber = 0;
         char Buf[128];
         std::sprintf(Buf, "$NopLabel$%u", ++BranchNumber);
-        
+
         DefinedBranchLabels.push_back(Buf);
         return Buf;
     }
-    
+
     unsigned ParseConst(ins_parameter& p, const Object& obj)
     {
         unsigned value = 0;
-        
+
         if(p.exp.get() == NULL)
         {
             fprintf(stderr, "ParseConst: param is null (#1)\n");
             abort();
         }
-        
+
         std::set<std::string> labels;
         FindExprUsedLabels(p.exp.get(), labels);
-        
+
         for(std::set<std::string>::const_iterator
             i = labels.begin(); i != labels.end(); ++i)
         {
@@ -93,13 +93,13 @@ namespace
 
                 if(e != p.exp.get())
                 {
-                    boost::shared_ptr<expression> tmp(e);
+                    std::shared_ptr<expression> tmp(e);
 
                     //fprintf(stderr, "  e sha: %p (%s)\n", (void*)e, e->Dump().c_str());
                     //fprintf(stderr, "    tmp: %p (%s)\n", (void*)tmp.get(), tmp->Dump().c_str());
-                    
+
                     p.exp.swap(tmp);
-                    
+
                     //fprintf(stderr, "  p.exp: %p (%s)\n", (void*)p.exp.get(), p.exp->Dump().c_str());
                 }
             }
@@ -110,15 +110,15 @@ namespace
                     label.c_str(), p.Dump().c_str());
             }
         }
-        
+
         if(p.exp.get() == NULL)
         {
             fprintf(stderr, "ParseConst: param is null (#2)\n");
             abort();
         }
-        
+
         //fprintf(stderr, "p.dump=%s\n", p.exp->Dump().c_str());
-        
+
         if(p.exp->IsConst())
             value = p.exp->GetConst();
         else
@@ -127,17 +127,17 @@ namespace
                 "Error: Expression must be const - got \"%s\"\n",
                 p.Dump().c_str());
         }
-        
+
         return value;
     }
-    
+
     void ParseIns(ParseData& data, Object& result)
     {
     MoreLabels:
         std::string tok;
-        
+
         data.SkipSpace();
-        
+
         if(IsDelimiter(data.PeekC()))
         {
             data.GetC();
@@ -162,17 +162,17 @@ namespace
         {
             while(data.PeekC() == '&') tok += data.GetC();
         }
-        
+
         if(data.PeekC() == '*')
         {
             tok += data.GetC();
             goto GotLabel;
         }
-        
+
         // Label may not begin with ., but instruction may
         if(tok.empty() && data.PeekC() == '.')
             tok += data.GetC();
-        
+
         for(bool first=true;; first=false)
         {
             char c = data.PeekC();
@@ -203,18 +203,18 @@ GotLabel:
             result.DefineLabel(PrevBranchLabel[length]);
             goto MoreLabels;
         }
-        
+
         //std::fprintf(stderr, "Took token '%s'\n", tok.c_str());
-        
+
         data.SkipSpace();
-        
+
         std::vector<OpcodeChoice> choices;
-        
+
         const struct ins *insdata = std::lower_bound(ins, ins+InsCount, tok);
         if(insdata == ins+InsCount || tok != insdata->token)
         {
             /* Other mnemonic */
-            
+
             if(tok == ".byt")
             {
                 OpcodeChoice choice;
@@ -223,7 +223,7 @@ GotLabel:
                 {
                     data.SkipSpace();
                     if(data.EOF()) break;
-                    
+
                     if(first)
                         first=false;
                     else
@@ -249,7 +249,7 @@ GotLabel:
                         }
                         continue;
                     }
-                    
+
                     ins_parameter p;
                     if(!ParseExpression(data, p) || !p.is_byte())
                     {
@@ -273,14 +273,14 @@ GotLabel:
                 {
                     data.SkipSpace();
                     if(data.EOF()) break;
-                    
+
                     if(first)
                         first=false;
                     else
                     {
                         if(data.PeekC() == ',') { data.GetC(); data.SkipSpace(); }
                     }
-                    
+
                     ins_parameter p;
                     if(!ParseExpression(data, p)
                     || p.is_word().is_false())
@@ -306,14 +306,14 @@ GotLabel:
                 {
                     data.SkipSpace();
                     if(data.EOF()) break;
-                    
+
                     if(first)
                         first=false;
                     else
                     {
                         if(data.PeekC() == ',') { data.GetC(); data.SkipSpace(); }
                     }
-                    
+
                     ins_parameter p;
                     if(!ParseExpression(data, p)
                     || p.is_long().is_false())
@@ -334,23 +334,23 @@ GotLabel:
             else if(!tok.empty() && tok[0] != '.')
             {
                 // Labels may not begin with '.'
-                
+
                 if(data.PeekC() == '=')
                 {
                     // Define label as something
-                    
+
                     data.GetC(); data.SkipSpace();
-                    
+
                     ins_parameter p;
                     if(!ParseExpression(data, p))
                     {
                         fprintf(stderr, "Expected expression: %s\n", data.GetRest().c_str());
                     }
-                    
+
                     unsigned value = ParseConst(p, result);
-                    
+
                     p.exp.reset();
-                    
+
                     if(tok == "*")
                     {
                         result.SetPos(value);
@@ -383,7 +383,7 @@ GotLabel:
         else
         {
             /* Found mnemonic */
-            
+
             bool something_ok = false;
             for(unsigned addrmode=0; insdata->opcodes[addrmode*3]; ++addrmode)
             {
@@ -391,14 +391,14 @@ GotLabel:
                 if(op != "--")
                 {
                     ins_parameter p1, p2;
-                    
+
                     const ParseData::StateType state = data.SaveState();
-                    
+
                     tristate valid = ParseAddrMode(data, addrmode, p1, p2);
                     if(!valid.is_false())
                     {
                         something_ok = true;
-                        
+
                         if(op == "sb") result.StartScope();
                         else if(op == "eb") result.EndScope();
                         else if(op == "gt") result.SelectTEXT();
@@ -433,33 +433,33 @@ GotLabel:
                                 case 14: // word imm
                                 {
                                     unsigned imm16 = ParseConst(p1, result);
-                                    
+
                                     //fprintf(stderr, "np %d\n", (short)imm16);
-                                    
+
                                     OpcodeChoice choice;
-                                    
+
                                     if(imm16 > 3)
                                     {
                                         std::string NopLabel = CreateNopLabel();
                                         result.DefineLabel(NopLabel, result.GetPos()+imm16);
-                                        
+
                                         // jmp
                                         choice.parameters.push_back(std::make_pair(1, 0x4C));
-                                        
+
                                         expression* e = new expr_label(NopLabel);
-                                        boost::shared_ptr<expression> tmp(e);
-                                        
+                                        std::shared_ptr<expression> tmp(e);
+
                                         p1.prefix = FORCE_ABSWORD;
                                         p1.exp.swap(tmp);
                                         choice.parameters.push_back(std::make_pair(2, p1));
-                                        
+
                                         imm16 -= 3;
                                     }
-                                    
+
                                     // Fill the rest with nops
                                     for(unsigned n=0; n<imm16; ++n)
                                         choice.parameters.push_back(std::make_pair(1, 0xEA));
-                                    
+
                                     choice.is_certain = valid.is_true();
                                     choices.push_back(choice);
                                     break;
@@ -473,14 +473,14 @@ GotLabel:
                         {
                             // Opcode in hex.
                             unsigned char opcode = std::strtol(op.c_str(), NULL, 16);
-                            
+
                             OpcodeChoice choice;
                             unsigned op1size = GetOperand1Size(addrmode);
                             unsigned op2size = GetOperand2Size(addrmode);
-                            
+
                             if(AddrModes[addrmode].p1 == AddrMode::tRel8)  p1.prefix = FORCE_REL8;
                             if(AddrModes[addrmode].p1 == AddrMode::tRel16) p1.prefix = FORCE_REL16;
-                            
+
                             choice.parameters.push_back(std::make_pair(1, opcode));
                             if(op1size)choice.parameters.push_back(std::make_pair(op1size, p1));
                             if(op2size)choice.parameters.push_back(std::make_pair(op2size, p2));
@@ -500,7 +500,7 @@ GotLabel:
                             std::fprintf(stderr, "  - p2=\"%s\"\n", p2.Dump().c_str());
 #endif
                     }
-                    
+
                     data.LoadState(state);
                 }
                 if(!insdata->opcodes[addrmode*3+2]) break;
@@ -548,7 +548,7 @@ GotLabel:
             for(unsigned a=0; a<choices.size(); ++a)
             {
                 const OpcodeChoice& c = choices[a];
-                
+
                 unsigned sizediff = 0;
                 for(unsigned b=0; b<c.parameters.size(); ++b)
                 {
@@ -568,9 +568,9 @@ GotLabel:
         {
             std::fprintf(stderr, "Internal error\n");
         }
-        
+
         OpcodeChoice& c = choices[smallestnum];
-        
+
 #if SHOW_CHOICES
         std::fprintf(stderr, "Choice %u:", smallestnum);
 #endif
@@ -578,12 +578,12 @@ GotLabel:
         {
             long value = 0;
             std::string ref;
-            
+
             unsigned size = c.parameters[b].first;
             const ins_parameter& param = c.parameters[b].second;
-            
+
             const expression* e = param.exp.get();
-            
+
             if(e->IsConst())
             {
                 value = e->GetConst();
@@ -595,15 +595,15 @@ GotLabel:
             else if(const sum_group* s = dynamic_cast<const sum_group* > (e))
             {
                 /* constant should always be last in a sum group. */
-                
+
                 /* sum_group always has at least 2 elements.
                  * If it has 0, it's converted to expr_number.
                  * if it has 1, it's converted into the element itself (or expr_negate).
                  */
-                
+
                 sum_group::list_t::const_iterator first = s->contents.begin();
                 sum_group::list_t::const_iterator last = s->contents.end(); --last;
-                
+
                 const char *error = NULL;
                 if(s->contents.size() != 2)
                 {
@@ -629,7 +629,7 @@ GotLabel:
                         e->Dump().c_str());
                     continue;
                 }
-               
+
                 ref = (dynamic_cast<const expr_label *> (first->first))->GetName();
                 value = last->first->GetConst();
             }
@@ -639,7 +639,7 @@ GotLabel:
                     e->Dump().c_str());
                 continue;
             }
-            
+
             char prefix = param.prefix;
             if(!prefix)
             {
@@ -654,7 +654,7 @@ GotLabel:
                             size);
                 }
             }
-            
+
             if(!ref.empty())
             {
                 result.AddExtern(prefix, ref, value);
@@ -684,7 +684,7 @@ GotLabel:
                 case FORCE_LOBYTE:
                     result.GenerateByte(value & 0xFF);
                     break;
-                
+
                 case FORCE_REL16:
                     result.GenerateByte(0x00);
                     //passthru
@@ -692,7 +692,7 @@ GotLabel:
                     result.GenerateByte(0x00);
                     break;
             }
-            
+
 #if SHOW_CHOICES
             std::fprintf(stderr, " %s(%u)", param.Dump().c_str(), size);
 #endif
@@ -707,7 +707,7 @@ GotLabel:
     void ParseLine(Object& result, const std::string& s)
     {
         //fprintf(stderr, "ParseLine: %s\n", s.c_str());
-        
+
         // Break into statements, assemble each by each
         for(unsigned a=0; a<s.size(); )
         {
@@ -720,7 +720,7 @@ GotLabel:
                 if(!quote && IsDelimiter(s[b]))break;
                 ++b;
             }
-            
+
             if(b > a)
             {
                 const std::string tmp = s.substr(a, b-a);
@@ -753,31 +753,32 @@ void AssemblePrecompiled(std::FILE *fp, Object& obj)
     {
         return;
     }
-    
+
     obj.StartScope();
     obj.SelectTEXT();
-    
+
     for(;;)
     {
         char Buf[16384];
         if(!std::fgets(Buf, sizeof Buf, fp)) break;
-        
+
         if(Buf[0] == '#')
         {
             // Probably something generated by gcc
             continue;
         }
-        
+
         /* Remove comments */
         for(char*p = Buf; *p; ++p)
         {
             if(*p == '\'')
-                { while(*++p && *p != '\''); if(!*p) break; continue; }
+                { while(*++p && *p != '\'') {}
+                  if(!*p) break; continue; }
             if(*p == ';') { *p = '\0'; break; }
         }
-        
+
         //fprintf(stderr, "Parsing Line %s\n", Buf);
-        
+
         ParseLine(obj, Buf);
     }
 

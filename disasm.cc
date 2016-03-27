@@ -30,7 +30,7 @@ static bool ROMAddressing = false;
 static int HandleIPS()
 {
     std::map<std::string, unsigned> RelocVarMap;
-    
+
     Globals.clear();
     for(;;)
     {
@@ -49,7 +49,7 @@ static int HandleIPS()
         if(c < (wanted=2)) { goto ipseof; }
         unsigned len = (((unsigned)Buf[0]) << 8)
                      | ((unsigned)Buf[1]);
-        
+
         bool rle=false;
         if(!len)
         {
@@ -60,7 +60,7 @@ static int HandleIPS()
             len = (((unsigned)Buf[0]) << 8)
                  | ((unsigned)Buf[1]);
         }
-        
+
         vector<unsigned char> Buf2(len);
         if(rle)
         {
@@ -76,7 +76,7 @@ static int HandleIPS()
             if(c < 0 && ferror(stdin)) { goto ipserr; }
             if(c != (wanted=(int)len)) { goto ipseof; }
         }
-        
+
         switch(pos)
         {
             case IPS_ADDRESS_GLOBAL:
@@ -86,11 +86,11 @@ static int HandleIPS()
                 unsigned addr = Buf2[name.size()+1]
                              | (Buf2[name.size()+2] << 8)
                              | (Buf2[name.size()+3] << 16);
-                
+
                 unsigned trans_addr = addr;
-                
+
                 printf(".global %s\t;$%06X\n", name.c_str(), trans_addr);
-                
+
                 Globals[CODE].insert(make_pair(addr, name));
                 break;
             }
@@ -102,7 +102,7 @@ static int HandleIPS()
                              | (Buf2[name.size()+2] << 8)
                              | (Buf2[name.size()+3] << 16);
                 unsigned size = Buf2[name.size()+4];
-                
+
                 unsigned var_id = 0;
                 std::map<std::string,unsigned>::iterator i = RelocVarMap.find(name);
                 if(i == RelocVarMap.end())
@@ -113,7 +113,7 @@ static int HandleIPS()
                 }
                 else
                     var_id = i->second;
-                
+
                 switch(size)
                 {
                     case 1:
@@ -209,7 +209,7 @@ static int HandleFDS(int num_sides, bool headered)
 static void LoadO65globals(const O65& o, SegmentSelection seg)
 {
     std::multimap<unsigned, std::string>& glob = Globals[seg];
-    
+
     std::vector<std::string> syms = o.GetSymbolList(seg);
     for(unsigned a=0; a<syms.size(); ++a)
     {
@@ -221,7 +221,7 @@ static void LoadO65globals(const O65& o, SegmentSelection seg)
 static void DumpO65globals(const O65& o, SegmentSelection seg)
 {
     const std::multimap<unsigned, std::string>& glob = Globals[seg];
-        
+
     for(std::multimap<unsigned, std::string>::const_iterator
         i = glob.begin(); i != glob.end(); ++i)
     {
@@ -250,18 +250,18 @@ static int HandleO65()
     RelocVarList = o65.GetExternList();
     for(unsigned a=0; a<RelocVarList.size(); ++a)
         printf(".extern %s\n", RelocVarList[a].c_str());
-    
+
     Globals.clear();
     LoadO65globals(o65, CODE);
     LoadO65globals(o65, DATA);
     LoadO65globals(o65, ZERO);
     LoadO65globals(o65, BSS);
-    
+
     O65dumpSeg(o65, CODE, ".code");
     O65dumpSeg(o65, DATA, ".data");
     O65dumpSeg(o65, ZERO, ".zero");
     O65dumpSeg(o65, BSS, ".bss");
-    
+
     ROMAddressing = false;
 
     return 0;
@@ -294,12 +294,12 @@ int main(int argc, const char *const *argv)
         int c = first ? 5 : sizeof Buf;
         c = fread(Buf, 1, c, stdin);
         if(c <= 0) break;
-        
+
         if(first)
         {
             if(!strncmp(Buf, "PATCH", 5))
                 return HandleIPS();
-            if(!strncmp(Buf+2, "o65", 3))
+            if(!strncmp(Buf+2, "o65", 3) || !strncmp(Buf, "Uzna", 4))
                 return HandleO65();
             if(!strncmp(Buf, "FDS\x1A", 4))
                 return HandleFDS(Buf[4], true);
@@ -307,11 +307,11 @@ int main(int argc, const char *const *argv)
                 return HandleFDS(2, false);
             first = false;
         }
-        
+
         code.insert(code.end(), Buf, Buf+c);
     }
     unsigned origin = 0x0000;
-    
+
     printf("Code:\n");
     ROMAddressing = true;
     DisAsm(origin, &code[0], code.size(), CODE);
@@ -336,17 +336,17 @@ static std::string FindFixupAnchor
      bool suffixing=true)
 {
     const std::multimap<unsigned, std::string>& glob = Globals[seg];
-    
+
     typedef std::multimap<unsigned, std::string>::const_iterator git;
-    
+
     git i = glob.lower_bound(address);
     while(i != glob.begin()
        && (i == glob.end() || i->first > address)) --i;
-    
+
     if(i == glob.end()) return "";
 
     int diff = address - i->first;
-    
+
     if(use_negative)
     {
         // Try next label, if it gives a shorter offset
@@ -357,13 +357,13 @@ static std::string FindFixupAnchor
             if(std::abs(diff2) < std::abs(diff)) { i = j; diff = diff2; }
         }
     }
-    
+
     std::string fixup = i->second;
     if(diff)
     {
         fixup += format("%+d", diff);
     }
-    
+
     if(!suffixing) return fixup;
     return "\t<" + fixup + ">";
 }
@@ -371,9 +371,9 @@ static std::string FindFixupAnchor
 static std::string DumpInt3(unsigned address, const unsigned char* data)
 {
     unsigned param = (data[2] << 16) | (data[1] << 8) | data[0];
-    
+
     std::string fix = "";
-    
+
     /* Could use binary searching here */
 
     const Re::R24_t& R24 = Relocs.R24;
@@ -401,9 +401,9 @@ End:
 static std::string DumpInt2(unsigned address, const unsigned char* data, bool is_code=false)
 {
     unsigned param = (data[1] << 8) | data[0];
-    
+
     std::string fix = "";
-    
+
     /* Could use binary searching here */
 
     const Re::R16_t& R16 = Relocs.R16;
@@ -431,9 +431,9 @@ End:
 static std::string DumpInt1(unsigned address, const unsigned char* data)
 {
     unsigned param = *data;
-    
+
     std::string fix = "";
-    
+
     /* Could use binary searching here */
 
     const Re::R16lo_t& R16lo = Relocs.R16lo;
@@ -508,7 +508,7 @@ static unsigned DumpIns(const unsigned address,
                         const SegmentSelection curseg)
 {
     std::string Buf;
-    
+
     const char*p = mode.params;
     unsigned size=opcodebytes;
     for(; p&&*p; )
@@ -546,9 +546,9 @@ static unsigned DumpIns(const unsigned address,
         }
         if(*p) Buf += ", ";
     }
-    
+
     printf(" %06X\t", FixCodeAddr(address));
-    
+
     for(unsigned n=0; n<4; ++n)
         printf(n<size?"%02X ":"   ", data[n]);
     if(!op.empty()) printf("%s ", op.c_str());
@@ -570,13 +570,13 @@ static unsigned CalcSize(const addrmode& mode)
             case '2': size += 2; break;
             case '3': size += 3; break;
         }
-    return size;    
+    return size;
 }
 
 static unsigned FindNextLabel(SegmentSelection seg, unsigned address)
 {
     const std::multimap<unsigned, std::string>& glob = Globals[seg];
-        
+
     std::multimap<unsigned,std::string>::const_iterator
       gi = glob.lower_bound(address);
     if(gi != glob.end()) return gi->first;
@@ -591,13 +591,13 @@ static unsigned FindNextFixup(unsigned address, unsigned& length,
     #define Try(l,u) \
         { if((u >= address && u < candidate) || (u==candidate && l >= length)) \
             { candidate=u; length=l; } }
-    
+
     const Re::R16_t& R16 = Relocs.R16;
     const Re::R16lo_t& R16lo = Relocs.R16lo;
     const Re::R16hi_t& R16hi = Relocs.R16hi;
     const Re::R24seg_t& R24seg = Relocs.R24seg;
     const Re::R24_t& R24 = Relocs.R24;
-    
+
     /* TODO: This could be made a lot faster by using binary search. */
 
     for(unsigned a=0; a < R16.Relocs.size(); ++a) Try(2,R16.Relocs[a].first);
@@ -605,13 +605,13 @@ static unsigned FindNextFixup(unsigned address, unsigned& length,
     for(unsigned a=0; a < R16hi.Relocs.size(); ++a) Try(1,R16hi.Relocs[a].first.first);
     for(unsigned a=0; a < R24seg.Relocs.size(); ++a) Try(1,R24seg.Relocs[a].first.first);
     for(unsigned a=0; a < R24.Relocs.size(); ++a) Try(3,R24.Relocs[a].first);
-    
+
     for(unsigned a=0; a < R16.Fixups.size(); ++a)    if(R16.Fixups[a].first==seg) Try(2,R16.Fixups[a].second);
     for(unsigned a=0; a < R16lo.Fixups.size(); ++a)  if(R16lo.Fixups[a].first==seg) Try(1,R16lo.Fixups[a].second);
     for(unsigned a=0; a < R16hi.Fixups.size(); ++a)  if(R16hi.Fixups[a].first==seg) Try(1,R16hi.Fixups[a].second.first);
     for(unsigned a=0; a < R24seg.Fixups.size(); ++a) if(R24seg.Fixups[a].first==seg) Try(1,R24seg.Fixups[a].second.first);
     for(unsigned a=0; a < R24.Fixups.size(); ++a)    if(R24.Fixups[a].first==seg) Try(3,R24.Fixups[a].second);
-    
+
     #undef Try
     return candidate;
 }
@@ -622,12 +622,12 @@ static void DisAsm(unsigned origin, const unsigned char *data,
                    const SegmentSelection curseg)
 {
     std::multimap<unsigned, std::string>& glob = Globals[curseg];
-        
+
     if(glob.find(origin) == glob.end())
     {
         glob.insert(make_pair(origin, format("Lbl_%06X", origin)));
     }
-    
+
     unsigned remain = length;
     for(unsigned size,address=origin; remain>0;
         address+=size,remain-=size,data+=size)
@@ -652,50 +652,50 @@ static void DisAsm(unsigned origin, const unsigned char *data,
         static const addrmode longmode = {"%s", "3"};
         static const char info[] =
  // addressing modes
- "AGZZZDDZABAZZIIZ" "CHZZZEEZAKZZZJJZ" "IGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ"
- "AGZZZDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ" "AGZZZDDZABAZLIIZ" "CHZZZEEZAKZZZJJZ"
- "ZGZZDDDZAZAZIIIZ" "CHZZEEFZAKAZZJZZ" "BGBZDDDZABAZIIIZ" "CHZZEEFZAKAZJJKZ"
- "BGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ" "BGZZDDDZABAZIIIZ" "CHZZZEEZAKZZZJJZ"
+ "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "IGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ"
+ "AGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "AGBGDDDDABABAIII" "CHHHEEEEAKAKJJJJ"
+ "BGBGDDDDABABIIII" "CHHHEEFFAKAKJJKK" "BGBGDDDDABABIIII" "CHHHEEFFAKAKJJKK"
+ "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ" "BGBGDDDDABABIIII" "CHHHEEEEAKAKJJJJ"
  // opcodes
- "brkora" "??????" "???ora" "asl???" "phpora" "asl???" "???ora" "asl???"
- "bplora" "??????" "???ora" "asl???" "clcora" "??????" "???ora" "asl???"
- "jsrand" "??????" "bitand" "rol???" "plpand" "rol???" "bitand" "rol???"
- "bmiand" "??????" "???and" "rol???" "secand" "??????" "???and" "rol???"
- "rtieor" "??????" "???eor" "lsr???" "phaeor" "lsr???" "jmpeor" "lsr???"
- "bvceor" "??????" "???eor" "lsr???" "clieor" "??????" "???eor" "lsr???"
- "rtsadc" "??????" "???adc" "ror???" "plaadc" "ror???" "jmpadc" "ror???"
- "bvsadc" "??????" "???adc" "ror???" "seiadc" "??????" "???adc" "ror???"
- "???sta" "??????" "stysta" "stx???" "dey???" "txa???" "stysta" "stx???"
- "bccsta" "??????" "stysta" "stx???" "tyasta" "txs???" "???sta" "??????"
- "ldylda" "ldx???" "ldylda" "ldx???" "taylda" "tax???" "ldylda" "ldx???"
- "bcslda" "??????" "ldylda" "ldx???" "clvlda" "tsx???" "ldylda" "ldx???"
- "cpycmp" "??????" "cpycmp" "dec???" "inycmp" "dex???" "cpycmp" "dec???"
- "bnecmp" "??????" "???cmp" "dec???" "cldcmp" "??????" "???cmp" "dec???"
- "cpxsbc" "??????" "cpxsbc" "inc???" "inxsbc" "nop???" "cpxsbc" "inc???"
- "beqsbc" "??????" "???sbc" "inc???" "sedsbc" "??????" "???sbc" "inc???";
+ "brkora" "KILslo" "nopora" "aslslo" "phpora" "aslanc" "nopora" "aslslo" //00
+ "bplora" "KILslo" "nopora" "aslslo" "clcora" "nopslo" "nopora" "aslslo" //10
+ "jsrand" "KILrla" "bitand" "rolrla" "plpand" "rolanc" "bitand" "rolrla" //20
+ "bmiand" "KILrla" "nopand" "rolrla" "secand" "noprla" "nopand" "rolrla" //30
+ "rtieor" "KILsre" "nopeor" "lsrsre" "phaeor" "lsrasr" "jmpeor" "lsrsre" //40
+ "bvceor" "KILsre" "nopeor" "lsrsre" "clieor" "nopsre" "nopeor" "lsrsre" //50
+ "rtsadc" "KILrra" "nopadc" "rorrra" "plaadc" "rorarr" "???adc" "rorrra" //60
+ "bvsadc" "KILrra" "nopadc" "rorrra" "seiadc" "noprra" "nopadc" "rorrra" //70
+ "nopsta" "nopsax" "stysta" "stxsax" "deynop" "txaane" "stysta" "stxsax" //80
+ "bccsta" "stxsha" "stysta" "stxsax" "tyasta" "txsshs" "shysta" "shxsha" //90
+ "ldylda" "ldxlax" "ldylda" "ldxlax" "taylda" "taxlax" "ldylda" "ldxlax" //A0
+ "bcslda" "KILlax" "ldylda" "ldxlax" "clvlda" "tsxlas" "ldylda" "ldxlax" //B0
+ "cpycmp" "nopdcp" "cpycmp" "decdcp" "inycmp" "dexsbx" "cpycmp" "decdcp" //C0
+ "bnecmp" "KILdcp" "nopcmp" "decdcp" "cldcmp" "nopdcp" "nopcmp" "decdcp" //D0
+ "cpxsbc" "nopisb" "cpxsbc" "incisb" "inxsbc" "nopsbc" "cpxsbc" "incisb" //E0
+ "beqsbc" "KILisb" "nopsbc" "incisb" "sedsbc" "nopisb" "nopsbc" "incisb";//F0
         unsigned mode=info[*data]-'A'; // addressing mode
-        
+
         if(mode < 12)
             size = CalcSize(addrmodes[mode]);
         else
             size = 1;
-        
+
         unsigned opcode_end = address+size;
-        
+
         std::multimap<unsigned,std::string>::const_iterator gi;
         gi = glob.lower_bound(address);
         for(; gi != glob.end() && gi->first == address; ++gi)
         {
             printf("%s:\n", gi->second.c_str());
         }
-        
+
         unsigned remain_until = remain;
-        
+
         /* If there's a label in the middle of an instruction,
          * remain_until could be shorter.
          */
         unsigned next_label      = FindNextLabel(curseg, address+1);
-        
+
         /* Avoid an opcode spanning over a label */
         if(next_label < opcode_end)
         {
@@ -714,7 +714,7 @@ static void DisAsm(unsigned origin, const unsigned char *data,
             remain_until = estimate_length;
             goto DoRaw;
         }
-        
+
         if(next_fixup < address
         && (next_fixup != address+1 || next_fixup+estimate_length != opcode_end)
           )
@@ -727,13 +727,13 @@ static void DisAsm(unsigned origin, const unsigned char *data,
             goto DoRaw;
         }
         if(mode >= 12) { goto onebyte; }
-        
+    /*
         if(data[0] == 0xA9 && data[1] == 0x3A
         && data[2] == 0x20 && data[3] == 0x51 && data[4] == 0xC0)
         {
             printf("MARK\n");
         }
-        
+    */
         /* If the instruction is too big for this position, create
          * a pseudo-instruction instead.
          */

@@ -33,9 +33,13 @@ inline unsigned char& Rd6502(unsigned addr)
 }
 static void SetPage(unsigned addrpage, unsigned rompage)
 {
-    unsigned char* ptr = ROM + (rompage << 13);
     if(rompage > LastPage)
-        abort();
+    {
+        printf("; SetPage(0x%04X,0x%02X) can't work, wrapping\n", addrpage,rompage);
+        rompage %= (LastPage+1);
+    }
+
+    unsigned char* ptr = ROM + (rompage << 13);
     //printf("SetPage(%u,%p)\n", addrpage,ptr);
     Pages[addrpage] = ptr;
 }
@@ -178,17 +182,15 @@ static unsigned char ad[512]=
 
 struct Disassembly
 {
-    const char*      Code;
-    unsigned         Bytes;
-    Addressing_Modes Mode;
-    int              Param; // 6502 addr, not ROM addr */
-    const char*      Prefix;
-    const char*      Suffix;
-    int              Meta;
+    const char*      Code  = "";
+    unsigned         Bytes = 0;
+    Addressing_Modes Mode  = No;
+    int              Param = 0; // 6502 addr, not ROM addr */
+    const char*      Prefix = "";
+    const char*      Suffix = "";
+    int              Meta = 0;
 
-    int OpCodeId;
-
-    Disassembly(): Code(""),Bytes(0),Mode(No),Param(0),Prefix(""),Suffix(""),Meta(0) {}
+    int OpCodeId = -1;
 };
 
 /* DAsm: Disassemble at given 6502 address.
@@ -494,11 +496,16 @@ struct SimulCPU
     std::deque<SimulReg> Stack;
     SimulRegPtr RAM[TRACK_RAM_SIZE];
 
-    SimulReg pagereg[4], mmc3cmd;
+    SimulReg pagereg[4], mmc3cmd,mmc3lo;
 
     void SetPageReg(unsigned page, SimulReg& v)
     {
-        if(v.Known() && v.Value() > LastPage) abort();
+        if(v.Known() && v.Value() > LastPage)
+        {
+            fprintf(stderr, ";Ignoring call to SetPageReg(%u,%d)\n",
+                page,v.Value());
+            return;
+        }
         pagereg[page].Assign(v);
     }
     void SetPageReg(unsigned page, int v, bool weak = false)
@@ -508,7 +515,12 @@ struct SimulCPU
               pagereg[page].Combine(tmp); }
         else
         {
-            if(v > LastPage) abort();
+            if(v > LastPage)
+            {
+                fprintf(stderr, ";Ignoring call to SetPageReg(%u,%d,weak=%s)\n",
+                    page,v,weak?"true":"false");
+                return;
+            }
             pagereg[page].Assign(v);
         }
     }
@@ -578,6 +590,7 @@ struct SimulCPU
         for(unsigned a=0; a<TRACK_RAM_SIZE; ++a)
             RAM[a].Combine(cpu2.RAM[a]);
         mmc3cmd.Combine(cpu2.mmc3cmd);
+        mmc3lo.Combine(cpu2.mmc3lo);
 
         if(Stack.empty())
             Stack = cpu2.Stack;
@@ -634,6 +647,7 @@ struct SimulCPU
 
     void MapperWrite(unsigned addr, const SimulReg& reg, int at=-1)
     {
+        //printf("MapperWrite(%04X,mappernum=%d)\n", addr,MapperNum);
         switch(MapperNum)
         {
             case 2: // e.g. Rockman, Castlevania
@@ -654,108 +668,107 @@ struct SimulCPU
             case 1: // MMC1 (Rockman 2, Simon's Quest etc.)
             {
                 if(addr < 0x8000) break;
+                printf("; MMC1: At %08X, wrote to %04X: ", at, addr);
+                reg.Dump();
+                printf("\n");
+
                 if(!reg.Known())
                 {
+                    printf("; - Unknown value, just making registers weak\n");
                     pagereg[0].MakeWeak();
                     pagereg[1].MakeWeak();
                     pagereg[2].MakeWeak();
                     pagereg[3].MakeWeak();
                     return;
                 }
-                static unsigned regs[4], shift, buffer;
+                static unsigned regs[4]={0x0E,0x00,0x00,0x00}, counter=0, cache=0;
                 unsigned n = (addr >> 13)-4;
                 unsigned v = reg.Value();
                 bool regnew[4] = {false,false,false,false};
                 bool p0_weak=true, p2_weak=true;
+
+                bool configure = false;
                 if(v & 0x80)
                 {
-                    regs[0] |= 0x0C;
-                    shift=buffer=0;
-                    goto DoMMC1_PRG;
+                    regs[0] = 0x0C;
+                    regnew[0] = true;
+                    configure = true;
                 }
-                buffer |= (v&1) << shift++;
-                if(shift == 5)
+                else
                 {
-                    regs[n] = buffer;
-                    regnew[n] = true;
-                    shift=buffer=0;
-                    if(n != 2)
+                    cache |= (v&1) << counter;
+                    configure = ++counter == 5;
+                    if(configure)
                     {
-                    DoMMC1_PRG:
-                        unsigned offs = regs[1]&0x10;
-                        unsigned newp0=0, newp2=2;
-                        switch(regs[0] & 0x0C)
-                        {
-                            case 0: case 4:
-                                newp0=(regs[3]&~1)+offs; p0_weak = !regnew[3] || !regnew[1];
-                                newp2=newp0+2;           p2_weak = p0_weak;
-                                break;
-                            case 8:
-                                newp2=regs[3];           p2_weak = !regnew[3];
-                                newp0=offs;              p0_weak = !regnew[1];
-                                break;
-                            case 12:
-                                newp0=regs[3];           p0_weak = !regnew[3];
-                                newp2=0xF+offs;          p2_weak = !regnew[1];
-                                break;
-                        }
-                        SetPageReg(0, newp0*2  , p0_weak);
-                        SetPageReg(1, newp0*2+1, p0_weak);
-                        SetPageReg(2, newp2*2  , p2_weak);
-                        SetPageReg(3, newp2*2+1, p2_weak);
-                        LoadMap();
+                        regs[ (addr >> 13) & 3 ] = cache;
+                        regnew[ (addr >> 13) & 3 ] = true;
                     }
+                }
+                if(configure)
+                {
+                    cache = counter = 0;
+                    unsigned newp0 = 0, newp2 = 0;
+
+                    switch( (regs[0] >> 2) & 3)
+                    {
+                        case 0: case 1:
+                            newp0 = (regs[3] & 0xE); p0_weak = !regnew[3] || !regnew[0];
+                            newp2 = newp0+1;         p2_weak = p0_weak;
+                            break;
+
+                        case 2:
+                            newp0 = 0;              p0_weak = !regnew[0];
+                            newp2 = regs[3] & 0xF;  p2_weak = !regnew[3];
+                            break;
+
+                        case 3:
+                            newp0 = regs[3] & 0xF;  p0_weak = !regnew[3];
+                            newp2 = LastPage/2;     p2_weak = !regnew[0];
+                            break;
+                    }
+                    printf("; - Configuring %d(%s) and %d(%s) - newness:%d,%d,%d,%d\n",
+                        newp0,p0_weak?"weak":"strong",
+                        newp2,p2_weak?"weak":"strong",
+                        regnew[0],regnew[1],regnew[2],regnew[3]); fflush(stdout);
+
+                    SetPageReg(0, newp0*2  , p0_weak);
+                    SetPageReg(1, newp0*2+1, p0_weak);
+                    SetPageReg(2, newp2*2  , p2_weak);
+                    SetPageReg(3, newp2*2+1, p2_weak);
+                    LoadMap();
                 }
                 break;
             }
 
             case 4: // MMC3
             {
-                if(addr >= 0x8000 && addr <= 0xBFFF)
-                    switch(addr & 0xE001)
+                if(addr >= 0x8000 && addr <= 0xFFFF)
+                {
+                    switch((addr & 1) + ((addr >> 12) & 6))
                     {
-                        case 0x8000:
-                        {
-                            if(reg.Known())
-                            {
-                                unsigned wascmd = mmc3cmd.Value();
-                                unsigned cmd = reg.Value();
-                                unsigned was8 = (wascmd & 0x40) ? 2 : 0;
-                                unsigned is8  = (cmd    & 0x40) ? 2 : 0;
-                                unsigned not8 = 2-is8;
-                                SetPageReg(is8,  pagereg[was8].Value(), reg.Known());
-                                SetPageReg(not8, pagereg[3].Value()-1, false);
-                            }
-                            else
-                            {
-                                pagereg[0].MakeWeak();
-                                pagereg[2].MakeWeak();
-                            }
-                            mmc3cmd.Assign(reg);
-                            break;
-                        }
-                        case 0x8001:
-                        {
-                            if(mmc3cmd.Known())
-                                switch(mmc3cmd.Value() & 7)
-                                {
-                                    case 6:
-                                        SetPageReg( mmc3cmd.Value() & 0x40 ? 2 : 0,
-                                                      reg.Value(), !reg.Known());
-                                        break;
-                                    case 7:
-                                        SetPageReg(1, reg.Value(), !reg.Known());
-                                        break;
-                                }
-                            else
-                            {
-                                pagereg[0].MakeWeak();
-                                pagereg[1].MakeWeak();
-                                pagereg[2].MakeWeak();
-                            }
-                            break;
-                        }
+                        case 0: mmc3cmd.Assign(reg); goto update_mmc3; // bank select
+                        case 1: if(mmc3cmd.Known()) switch(mmc3cmd.Value() & 7)
+                                                    {
+                                                        case 6: mmc3lo.Assign(reg); goto update_mmc3;
+                                                        case 7: SetPageReg(1, reg.Value(), !reg.Known()); break;
+                                                    }
+                                else { pagereg[1].MakeWeak(); goto update_mmc3; }
+                                break;
                     }
+                    break;
+                update_mmc3:
+                    if(mmc3cmd.Known())
+                    {
+                        bool bit40 = mmc3cmd.Value() & 0x40;
+                        SetPageReg(bit40 ? 2 : 0, mmc3lo.Value(), !mmc3lo.Known());
+                        SetPageReg(bit40 ? 0 : 2, false);
+                    }
+                    else
+                    {
+                        pagereg[0].MakeWeak();
+                        pagereg[2].MakeWeak();
+                    }
+                }
                 break;
             }
 
@@ -875,16 +888,16 @@ struct PointerTableItem
 
 struct State
 {
-    CodeLikelihood Type;
+    CodeLikelihood Type = Unknown;
 
-    SpecialTypes SpecialType;
+    SpecialTypes SpecialType = None;
     unsigned     SpecialTypeParam, SpecialTypeParam2;
 
     // Code:
     std::set<unsigned/*romptr*/> CalledFrom;
-    int FirstJumpFrom;
-    int LastJumpFrom;
-    int JumpsTo;
+    int FirstJumpFrom = -1;
+    int LastJumpFrom = -1;
+    int JumpsTo = -1;
 
     std::set<std::string> Labels;
     std::vector<std::string> Comments;
@@ -896,30 +909,24 @@ struct State
     enum reftype { none=0, lo=1, hi=2, lo_abs=3, hi_abs=4 };
 
     struct {
-        reftype referred_byte    : 3;
-        bool meaning_interpreted : 1;
-        bool barrier             : 1;
-        char is_referred         : 3; // 1=yes, 2=indexed, 4=data referrals
+        reftype referred_byte    : 3;// = none;
+        bool meaning_interpreted : 1;// = false;
+        bool barrier             : 1;// = false;
+        char is_referred         : 3;// = 0; // 1=yes, 2=indexed, 4=data referrals
     };
 
     // Data:
-    unsigned ArraySize; // size of 1 element
-    unsigned ElemCount; // number of elements
+    unsigned ArraySize = 0; // size of 1 element
+    unsigned ElemCount = 0; // number of elements
 
     PointerTableItem PtrAddr;
 
 public:
     State():
-        Type(Unknown),
-        SpecialType(None),
-        FirstJumpFrom(-1),
-        LastJumpFrom(-1),
-        JumpsTo(-1),
         referred_byte(none),
         meaning_interpreted(false),
         barrier(false),
-        is_referred(0),
-        ArraySize(0), ElemCount(0)
+        is_referred(0)
         { }
 
     void JumpedFromInsert(unsigned romptr)
@@ -1333,6 +1340,8 @@ public:
         // $A2 x A0 y 88 D0 FD CA D0 FA  YX-delay = 4 + y*5-1 + (x-1) * (5+256*5-1) + 5-1 = 1284*x + y*5 - 1277 cycles
         // $A0 y A0 x CA D0 FD 88 D0 FA  XY-delay = opposite
 
+        // $A9 x 85 00 EA C6 00 D0 FB    A-delay = 2+3+ (2+5+3)*x - 1 = 10*x + 4 cycles
+
         for(unsigned romptr=0; romptr<results.size(); )
         {
             CodeLikelihood type = results[romptr].Type;
@@ -1350,6 +1359,9 @@ public:
                 if(cycles > 0 && !results[ahead].Labels.empty()) break;
 
                 //sprintf(strchr(Buf,0), "[$%X=$%02X (%u)]", ahead,ROM[ahead],cycles);
+
+                // This is detection of various commonly used instructions / code snippets
+                // that do nothing but cause a predictable amount of delay.
 
                 if(ROM[ahead] == 0xEA) { cycles += 2; ahead += 1; continue; }
 
@@ -1413,6 +1425,14 @@ public:
                 && ROM[ahead+7] == 0x88
                 && ROM[ahead+8] == 0xD0
                 && ROM[ahead+9] == 0xFA) { cycles += m(ROM[ahead+1]) * 1284 + m(ROM[ahead+3]) * 5 - 1277; ahead += 10; continue; }
+
+                if(ROM[ahead+0] == 0xA9
+                && ROM[ahead+2] == 0x85
+                && ROM[ahead+3] == ROM[ahead+6]
+                && ROM[ahead+4] == 0xEA
+                && ROM[ahead+5] == 0xC6
+                && ROM[ahead+7] == 0xD0
+                && ROM[ahead+8] == 0xFB) { cycles += m(ROM[ahead+1]) * 10 + 4; ahead += 9; continue; }
 
                 if(ROM[ahead+0] == 0x20)
                 {
@@ -2011,10 +2031,19 @@ public:
 
             if(type == PartialCode)
             {
-            NextByte:
-                ++romptr;
-                if(need_nl) putchar('\n');
-                continue;
+                /* PartialCode happens when the same blob of code is disassembled
+                 * beginning at two different offsets. This can happen for various
+                 * reasons, including JSRs with wrong bank assumptions.
+                 * The outcome is that the beginning of a valid instruction can
+                 * be indicated as the "second byte" of another instruction that
+                 * began in the middle of previous instruction.
+                 * There's a couple of ways to deal with this problem. One is to
+                 * interrupt the previous instruction (display it as .byte)
+                 * and disassemble the new instruction properly. The other choice
+                 * is to disassemble the previous instruction completely, and display
+                 * the partial code as .byte. The latter is what we do here.
+                 */
+                type = MaybeData;
             }
 
             //printf("(type%4d)", type);
@@ -2045,7 +2074,6 @@ public:
                 if(state.barrier)
                 {
                     // The line after a barrier always has a label.
-
                     if(HasNonShortLabel(romptr))
                         printf(";------------------------------------------\n");
                     else //if(results[romptr].Labels.empty())
@@ -2145,9 +2173,9 @@ public:
                 if(stride <= 1) stride = 16;
 
                 while(/*a<linelen &&*/ (romptr+a) < results.size()
-                    && IsDataType(results[romptr+a].Type)
                     && (a==0 || results[romptr+a].Labels.empty()))
                 {
+                    if(a > 0 && !IsDataType(results[romptr+a].Type)) break;
                     ok_bytes.push_back(ROM[romptr+a]);
                     ++a;
                 }
@@ -2192,7 +2220,10 @@ public:
                 continue;
             }
 
-            goto NextByte;
+        NextByte:
+            ++romptr;
+            if(need_nl) putchar('\n');
+            continue;
         }
     }
 private:
@@ -2786,13 +2817,19 @@ private:
             case 6: // bit (?)
             case 20: // dec
             case 25: // eor
-            case 33: // lsr
             case 34: // ora
             case 39: // rol
             case 40: // ror
             case 43: // sbc
+            UnkA:
                 Arithmetic_Invalidate(A);
                 goto CodeContinues;
+
+            case 33: // lsr
+                if(code.Mode != Ac) goto UnkA;
+                if(state.cpu.A.Known()) state.cpu.A.Assign(state.cpu.A.Value() >> 1); // LSR A, used in Mapper reprogramming
+                goto CodeContinues;
+
             case 21: // dex
             case 23: // inx
                 /*if(state.cpu.X.Known())
@@ -3031,7 +3068,8 @@ private:
          */
         for(unsigned a=1; a<code.Bytes; ++a)
         {
-            results[romptr+a].Type = PartialCode;
+            //results[romptr+a].Type = PartialCode;
+            Mark(romptr+a, PartialCode);
         }
     }
     void SortVisitList()
@@ -3061,6 +3099,10 @@ public:
         //printf("Mark %05X, %d\n", romptr,type);
         CodeLikelihood oldtype = results[romptr].Type;
         int oldcertainty = CertaintyOf(oldtype);
+
+        if(type == CertainlyCode && (oldtype == PartialCode
+                                  || oldtype == CertainlyData))
+            certainty = oldcertainty / 2;
 
         if(certainty >= oldcertainty)
         {
@@ -3347,6 +3389,7 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         void (Disassembler::*MarkFun2)(unsigned lo,unsigned hi,unsigned step,unsigned len,const std::string& name,int offset,KnowledgeAboutMapping mapping_knowledge);
 
         if(tokens[0] == "CertainlyCode") { type = CertainlyCode; goto MarkCall; }
+        if(tokens[0] == "PartialCode")   { type = PartialCode; goto MarkCall; }
         if(tokens[0] == "MaybeCode")     { type = MaybeCode; goto MarkCall; }
         if(tokens[0] == "MaybeData")     { type = MaybeData; goto MarkCall; }
         if(tokens[0] == "CertainlyData") { type = CertainlyData; goto MarkCall; }

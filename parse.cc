@@ -48,10 +48,10 @@ namespace
             for(;;)
             {
                 token += data.GetC();
-                
+
                 if(data.EOF()) break;
                 c = data.PeekC();
-                
+
                 if(c == 'x' || c == 'X')
                 {
                     if(token == "0")  { data.GetC(); token = "$"; goto Hex2; }
@@ -72,7 +72,7 @@ namespace
         }
         return token;
     }
-    
+
     expression* CreatePlusExpr(expression* left, expression* right)
     {
         return new sum_group(left, right, false);
@@ -87,20 +87,20 @@ namespace
                                     char disallow_local_label=0)
     {
         std::string s = ParseToken(data);
-        
+
         expression* left = NULL;
-        
+
         if(s.empty()) /* If no number or symbol */
         {
             char c = data.PeekC();
-            
+
             char local_label = 0;
             unsigned local_length = 0;
-            
+
             /* disallow_local_label is used to prevent --
                from being parsed as -($PrevLabel$)
              */
-            
+
             if((c == '+' || c == '-') && c != disallow_local_label)
             {
                 ParseData::StateType state = data.SaveState();
@@ -108,7 +108,7 @@ namespace
                 do { ++local_length; data.GetC(); } while(data.PeekC() == c);
                 data.LoadState(state);
             }
-            
+
             if(c == '-') // negation
             {
                 ParseData::StateType state = data.SaveState();
@@ -123,13 +123,13 @@ namespace
                 {
                     const std::string RestAfter = data.GetRest();
                     data.LoadState(state);
-                    
+
                     if(RestBefore != RestAfter)
                     {
                         // If the error happened later, return an error.
                         return left;
                     }
-                    
+
                     // If it ate *nothing*, we've got PrevBranchLabel here.
                     goto GotLocalLabel;
                 }
@@ -183,7 +183,7 @@ namespace
             {
                 unsigned pos = 1;
                 if(s[1] == '-') { ++pos; negative = true; }
-                
+
                 for(; pos < s.size(); ++pos)
                 {
                     value = value*16;
@@ -199,7 +199,7 @@ namespace
                 for(; pos < s.size(); ++pos)
                     value = value*10 + (s[pos] - '0');
             }
-            
+
             if(negative) value = -value;
             left = new expr_number(value);
         }
@@ -210,13 +210,13 @@ namespace
                 /* Attempt to use a reserved as variable name */
                 return left;
             }
-            
+
             left = new expr_label(s);
         }
 
         data.SkipSpace();
         if(!left) return left;
-        
+
     Reop:
         if(!data.EOF())
         {
@@ -250,7 +250,7 @@ namespace
                         } \
                         goto Reop; \
                 }   }
-            
+
             op2(prio_addsub, '+',   0, CreatePlusExpr);
             op2(prio_addsub, '-',   0, CreateMinusExpr);
             op2(prio_divmul, '*',   0, new expr_mul);
@@ -268,9 +268,9 @@ namespace
 bool ParseExpression(ParseData& data, ins_parameter& result)
 {
     data.SkipSpace();
-    
+
     if(data.EOF()) return false;
-    
+
     char prefix = data.PeekC();
     if(prefix == FORCE_LOBYTE
     || prefix == FORCE_HIBYTE
@@ -287,21 +287,21 @@ bool ParseExpression(ParseData& data, ins_parameter& result)
         // no prefix
         prefix = 0;
     }
-    
+
     expression* e = RealParseExpression(data);
-    
+
     if(e)
     {
         e->Optimize(e);
     }
 
     //std::fprintf(stderr, "ParseExpression returned: '%s'\n", result.Dump().c_str());
-    
-    boost::shared_ptr<expression> tmp(e);
-    
+
+    std::shared_ptr<expression> tmp(e);
+
     result.prefix = prefix;
     result.exp.swap(tmp);
-    
+
     return e != NULL;
 }
 
@@ -326,15 +326,15 @@ tristate ParseAddrMode(ParseData& data, unsigned modenum,
         if(!ParseExpression(data, p)) return false
 
     if(modenum >= AddrModeCount) return false;
-    
+
     const AddrMode& modedata = AddrModes[modenum];
-    
+
     if(modedata.forbid) { ParseNotAllow(modedata.forbid); }
     ParseReq(modedata.prereq);
     if(modedata.p1 != AddrMode::tNone) { ParseExpr(p1); }
     if(modedata.p2 != AddrMode::tNone) { ParseOptional(','); ParseExpr(p2); }
     ParseReq(modedata.postreq);
-    
+
     data.SkipSpace();
     tristate result = data.EOF();
     switch(modedata.p1)
@@ -359,7 +359,7 @@ tristate ParseAddrMode(ParseData& data, unsigned modenum,
         case AddrMode::tRel16: ;
         case AddrMode::tNone: ;
     }
-    
+
 /*
     std::fprintf(stderr, "Parsed: p1=\"%s\", p2=\"%s\"\n",
         p1.Dump().c_str(),p2.Dump().c_str());

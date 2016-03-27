@@ -7,7 +7,7 @@
 #include "assemble.hh"
 #include "tristate"
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 #undef EOF
 
@@ -18,37 +18,37 @@ private:
     size_t pos, eofpos;
 public:
     typedef size_t StateType;
-    
+
     ParseData() : data(), pos(0), eofpos(0) { }
     ParseData(const std::string& s) : data(s), pos(0), eofpos(data.size()) { }
     ParseData(const char *s) : data(s), pos(0), eofpos(data.size()) { }
-    
+
     bool EOF() const { return pos >= eofpos; }
     void SkipSpace() { while(!EOF() && (data[pos] == ' ' || data[pos] == '\t'))++pos; }
     StateType SaveState() const { return pos; }
     void LoadState(const StateType state) { pos = state; }
     char GetC() { return EOF() ? '\0' : data[pos++]; }
     char PeekC() const { return EOF() ? '\0' : data[pos]; }
-    
+
     const std::string GetRest() const { return data.substr(pos); }
 };
 
 struct ins_parameter
 {
     char prefix;
-    boost::shared_ptr<expression> exp;
-    
+    std::shared_ptr<expression> exp;
+
     ins_parameter(): prefix(0), exp(/*NULL*/)
     {
     }
-    
+
     ins_parameter(unsigned char num)
     : prefix(FORCE_LOBYTE), exp(new expr_number(num))
     {
     }
-    
+
     // Note: No deletes here. Would cause problems when storing in vectors.
-    
+
     tristate is_byte() const
     {
         if(prefix == FORCE_LOBYTE
@@ -78,7 +78,7 @@ struct ins_parameter
         long value = exp->GetConst();
         return value >= -0x800000 && value < 0x1000000;
     }
-    
+
     const std::string Dump() const
     {
         std::string result;
