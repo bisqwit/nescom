@@ -153,7 +153,7 @@ UNUSED_archpak: ${ARCHFILES} ;
 
 arch_finish_pak:	
 	- if [ "${NOBZIP2ARCHIVES}" = "" ]; then bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar; fi
-	if [ "${NOGZIPARCHIVES}" = "" ]; then gzip -f9 ${ARCHDIR}${ARCHNAME}.tar; wine /usr/local/bin/DeflOpt.exe ${ARCHDIR}${ARCHNAME}.tar.gz ; fi
+	if [ "${NOGZIPARCHIVES}" = "" ]; then gzip -f9 ${ARCHDIR}${ARCHNAME}.tar; DeflOpt ${ARCHDIR}${ARCHNAME}.tar.gz ; fi
 	rm -f ${ARCHDIR}${ARCHNAME}.tar
 
 # Makes the packages of various types...
@@ -195,3 +195,11 @@ uninstall${DEPFUN_INSTALL} deinstall${DEPFUN_INSTALL}:
 	install${DEPFUN_INSTALL} \
 	deinstall${DEPFUN_INSTALL} \
 	uninstall${DEPFUN_INSTALL}
+
+git_undo_release:
+	- git stash
+	git checkout release
+	git reset --hard release^
+	git checkout master
+	git reset --soft HEAD^
+	- git stash pop

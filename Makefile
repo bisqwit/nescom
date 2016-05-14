@@ -29,7 +29,7 @@ OPTIM=-Ofast -std=c++14
 
 CPPFLAGS += -I.
 
-VERSION=1.1.8
+VERSION=1.1.8.1
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -57,11 +57,28 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           rangeset.hh rangeset.tcc range.hh range.tcc \
           miscfun.hh miscfun.tcc \
           \
-          clever/kage.ini \
-          clever/cv2u.ini \
-          clever/cv.ini \
-          clever/solokey.ini \
-          clever/lunarball.ini
+	clever/akuden.ini \
+	clever/arkanoid.ini \
+	clever/batlcity.ini \
+	clever/bigfoot.ini \
+	clever/bomb.ini \
+	clever/cv.ini \
+	clever/cv2u.ini \
+	clever/disksys.ini \
+	clever/ini-documentation.txt \
+	clever/kage.ini \
+	clever/lunarball.ini \
+	clever/mariobros.ini \
+	clever/mm2.ini \
+	clever/rm2.ini \
+	clever/smb1a.ini \
+	clever/smb2.ini \
+	clever/smb3u.ini \
+	clever/solokey.ini \
+	clever/solstice.ini \
+	clever/unknown.ini \
+	clever/valky.ini \
+	clever/virus.ini
 
 PREFIX=/usr/local
 BINDIR=$(PREFIX)/bin

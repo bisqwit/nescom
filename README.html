@@ -23,275 +23,53 @@ SMALL    {font-size:70%}
   <h1>Free NES assembler</h1>
   <h2 class=level2> 0. Contents </h2>
   
-  This is the documentation of nescom-1.1.8.
-<div class=toc><table cellspacing=0 cellpadding=0 class=toc><tr><td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;1. <a href="#purpose">Purpose</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1. <a href="#history">History</a><br>&nbsp;&nbsp;&nbsp;2. <a href="#linker">Linker</a><br>&nbsp;&nbsp;&nbsp;3. <a href="#syntax">Supported syntax</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.1. <a href="#ops">Mnemonics</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.2. <a href="#addrmodes">Addressing modes</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.3. <a href="#opsize">Operand size control</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.4. <a href="#eval">Expression evaluation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.5. <a href="#segs">Segments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.6. <a href="#comments">Comments</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.7. <a href="#separation">Command separation</a><br></td>
-<td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.8. <a href="#reloc">Code pointer relocation</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.9. <a href="#branchlabels">Branch labels</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.10. <a href="#cpp">Preprocessor</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.11. <a href="#objfile">Object file format</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.12. <a href="#ips">IPS output support</a><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3.13. <a href="#linkage">Linkage selection</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#changelog">Changelog</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#bugs">Known bugs</a><br>&nbsp;&nbsp;&nbsp;6. <a href="#copying">Copying</a><br>&nbsp;&nbsp;&nbsp;7. <a href="#requirements">Requirements</a><br>&nbsp;&nbsp;&nbsp;8. <a href="#download">Downloading</a><br></td>
-</tr></table></div><H2 id="purpose" class="level2"><a name="purpose"></a>1. Purpose</H2><div class="level2" id="divpurpose">
+  This is the documentation of nescom-1.1.8.1.
+<?
 
-This program reads symbolic 6502/RP2A03/RP2A07 machine code
-and compiles (assembles) it into a relocatable object file
-or into an IPS patch.
- <p>
-The produced object file is binary-compatible with those
-made with <a href="http://www.google.fi/search?q=xa65">XA65</a>.
-
-</div><H3 id="history" class="level3"><a name="history"></a>1.1. History</H3><div class="level3" id="divhistory">
-
-This program was born when Bisqwit needed to have something for
-NES that is already accomplished for SNES by
-<a href="http://bisqwit.iki.fi/source/snescom.html">snescom</a>.
-
-
-</div><H2 id="linker" class="level2"><a name="linker"></a>2. Linker</H2><div class="level2" id="divlinker">
-
-This package also contains a linker.
- <p>
-The linker can also be used to convert IPS patches into
-binary files (an empty space is assumed to be the original
-file), with the following command:
- <code>neslink input.ips -o result.bin -f raw</code><br>
-
-</div><H2 id="syntax" class="level2"><a name="syntax"></a>3. Supported syntax</H2><div class="level2" id="divsyntax">
-
-</div><H3 id="ops" class="level3"><a name="ops"></a>3.1. Mnemonics</H3><div class="level3" id="divops">
-
-The following mnemonics are supported:
-<p>
-<code>adc</code>, <code>and</code>, <code>asl</code>, <code>bcc</code>, 
-<code>bcs</code>, <code>beq</code>, <code>bit</code>, <code>bmi</code>, 
-<code>bne</code>, <code>bpl</code>, <code>brk</code>, <code>bvc</code>, 
-<code>bvs</code>, <code>clc</code>, <code>cld</code>, <code>cli</code>, 
-<code>clv</code>, <code>cmp</code>, <code>cpx</code>, <code>cpy</code>, 
-<code>dec</code>, <code>dex</code>, <code>dey</code>, <code>eor</code>, 
-<code>inc</code>, <code>inx</code>, <code>iny</code>, <code>jmp</code>, 
-<code>jsr</code>, <code>lda</code>, <code>ldx</code>, <code>ldy</code>, 
-<code>lsr</code>, <code>nop</code>, <code>ora</code>, <code>pha</code>, 
-<code>php</code>, <code>pla</code>, <code>plp</code>, <code>rol</code>, 
-<code>ror</code>, <code>rti</code>, <code>rts</code>, <code>sbc</code>, 
-<code>sec</code>, <code>sed</code>, <code>sei</code>, <code>sta</code>, 
-<code>stx</code>, <code>sty</code>, <code>tax</code>, <code>tay</code>, 
-<code>tsx</code>, <code>txa</code>, <code>txs</code>, <code>tya</code>
-</p>
-
-</div><H3 id="addrmodes" class="level3"><a name="addrmodes"></a>3.2. Addressing modes</H3><div class="level3" id="divaddrmodes">
-
-All the standard addressing modes of the 6502 cpu are supported.
-<p>
-Syntax:
-
-<table border="1">
- <tr>
-  <th>Name</th>
-  <th>Examples</th>
-  <th>Functionally equivalent to (not nescom syntax, provided for illustration only)</th>
- </tr>
- <tr>
-  <td>Implied:</td>
-   <td> <code>nop</code>; <code>clc</code> </td>
- </tr>
- <tr>
-  <td>Immediate:</td>
-   <td> <code>lda #value</code> etc </td>
-   <td> <code>a = value</code> </td>
- </tr>
- <tr>
-  <td>Short relative:</td>
-   <td> <code>bcc end</code></td>
- </tr>
- <tr>
-  <td>Direct:</td>
-   <td> <code>lda $12</code></td>
-   <td> <code>a = ram[$0012]</code> </td>
- </tr>
- <tr>
-  <td>Direct indexed:</td>
-   <td> <code>lda $12,x</code><br><code>lda $12,y</code> </td>
-   <td> <code>a = ram[$0012 + x]</code><br><code>a = ram[$0012 + y]</code> </td>
- </tr>
- <tr>
-  <td>Direct indexed indirect:</td>
-   <td> <code>lda ($12,x)</code> </td>
-   <td> <code>a = ram[ramw[$0012 + x]]</code> </td>
- </tr>
- <tr>
-  <td>Direct indirect indexed:</td>
-   <td> <code>lda ($12),y</code> </td>
-   <td> <code>a = ram[ramw[$0012] + y]</code> </td>
- </tr>
- <tr>
-  <td>Absolute:</td>
-   <td> <code>lda $1234</code> </td>
-   <td> <code>a = ram[$1234]</code> </td>
- </tr>
- <tr>
-  <td>Absolute indexed:</td>
-   <td> <code>lda $1234,x</code><br><code>lda $1234,y</code> </td>
-   <td> <code>a = ram[$1234 + x]</code><br><code>a = ram[$1234 + y]</code> </td>
- </tr>
- <tr>
-  <td>Absolute indirect:</td>
-   <td> <code>lda ($1234)</code> </td>
-   <td> <code>a = ram[ramw[$1234]]</code> </td>
- </tr>
-</table>
-Note: "ram" and "ramw" in the table refer to generic
-address space access (RAM, I/O ports, ROM etc).
-"ramw" means 16-bit read access,
-but the meaning of "ram" depends on the context.
-It can be a read, write or a jump target, depending on instruction.
-
-</div><H3 id="opsize" class="level3"><a name="opsize"></a>3.3. Operand size control</H3><div class="level3" id="divopsize">
-
-There are several operand prefixes
-that can be used to force a certain operand size/type.
-
-<ul>
- <li><code>lda !$f0</code> would use 16-bit address instead of direct page.</li>
- <li><code>lda #&lt;var</code> can be used to load the lower 8 bits of an external variable.</li>
- <li><code>lda #&gt;var</code> can be used to load the upper 8 bits of an external variable.</li>
-</ul>
-
-</div><H3 id="eval" class="level3"><a name="eval"></a>3.4. Expression evaluation</H3><div class="level3" id="diveval">
-
-Expressions are supported. These are valid code:
-<ul>
- <li><code>bcc somewhere+1</code></li>
- <li><code>lda #!address + $100</code></li>
- <li><code>ldy #$1234 + ($6C * 3)</code></li>
-</ul>
-
-</div><H3 id="segs" class="level3"><a name="segs"></a>3.5. Segments</H3><div class="level3" id="divsegs">
-
-Code, labels and data can be generated to four segments:
-<code>text</code>, <code>data</code>, <code>zero</code> and <code>bss</code>.<br>
-Use <code>.text</code>, <code>.data</code>, <code>.zero</code> and <code>.bss</code>
-respectively to select the segment.<br>
-However, only the contents of <code>text</code>
-and <code>data</code> segments are saved into
-the o65 file. Labels are saved in all segments.
-
-</div><H3 id="comments" class="level3"><a name="comments"></a>3.6. Comments</H3><div class="level3" id="divcomments">
-
-Comments begin with a semicolon (;) and end with a newline.<br>
-A colon is allowed to appear in comment.
-
-</div><H3 id="separation" class="level3"><a name="separation"></a>3.7. Command separation</H3><div class="level3" id="divseparation">
-
-Commands are separated by newlines and colons (:).
-
-</div><H3 id="reloc" class="level3"><a name="reloc"></a>3.8. Code pointer relocation</H3><div class="level3" id="divreloc">
-
-You can use a command like <code>*= $F200</code> to change
-where the code goes by default.<br>
-With IPS this is especially useful.<br>
-You can change the code pointer as many times as you wish,
-but unless you're generating an IPS file, all code must be
-a continuous block.
-
-</div><H3 id="branchlabels" class="level3"><a name="branchlabels"></a>3.9. Branch labels</H3><div class="level3" id="divbranchlabels">
-
-The label <code>-</code> can be defined for local branches backward
-and <code>+</code> for branches forward.
-
-</div><H3 id="cpp" class="level3"><a name="cpp"></a>3.10. Preprocessor</H3><div class="level3" id="divcpp">
-
-nescom uses <a href="http://gcc.gnu.org/">GCC</a> as a preprocessor.<br>
-You can use <code>#ifdef</code>, <code>#ifndef</code>, <code>#define</code>,
-<code>#if</code>, <code>#endif</code> and <code>#include</code> like
-in any C program. (See <a href="#bugs">bugs</a>)
-
-</div><H3 id="objfile" class="level3"><a name="objfile"></a>3.11. Object file format</H3><div class="level3" id="divobjfile">
-
-nescom produces relocatable object files (O65),
-non-relocatable patch files (IPS), or raw files.<br>
-The O65 file format has been
-<a href="http://www.google.com/search?q=6502+binary+relocation+format">documented</a>
-by André Fachat
-for the <a href="http://www.google.fi/search?q=xa65">XA65</a> project.
-
-</div><H3 id="ips" class="level3"><a name="ips"></a>3.12. IPS output support</H3><div class="level3" id="divips">
-
-This version of nescom allows you to create IPS files.<br>
-This IPS format has been extended to allow you to specify
-global symbols and externs to be patched later.<br>
-In the generated format:
-<ul>
- <li>If the patch address is $000001, it means this
-     entry is a dynamic symbol. What follows is an asciiz
-     string (the symbol name), the address (3-byte lsb-first integer)
-     and the relocation size in bytes (1 byte).</li>
- <li>If the patch address is $000002, it means this
-     entry is a global symbol. What follows is an asciiz
-     string (the symbol name) and the address (3-byte lsb-first integer)
-     where this symbol is located in.
-</ul>
-
-</div><H3 id="linkage" class="level3"><a name="linkage"></a>3.13. Linkage selection</H3><div class="level3" id="divlinkage">
-
-By default, O65 objects are linked to any free location in the ROM.<br>
-IPS files are linked to predefined locations.
- <p>
-With the <code>.link</code> statement, you can change that.
- <p>
-<code>.link page $3F</code> declares that this object should be
-placed into page $3F.<p>
-<code>.link group 1</code> declares that this object should be
-placed to the same page together with all other objects that
-want to be linked in group 1. This is useful when you want to
-ensure that certain tables or routines go to the same page,
-even if they are not in the same compilation unit.<br>
-The actual page is determined during link time, and you can
-get the page by using 24-bit (@) or segment reference (^)
-to a symbol from those modules.
-<p>
-<em>This is not completely ready for NES yet.</em>
-
-</div><H2 id="changelog" class="level2"><a name="changelog"></a>4. Changelog</H2><div class="level2" id="divchangelog">
-
-Nov 20 2005; 0.0.0 import from snescom-1.5.0.1.<br>
-Nov 29 2005; 0.1.0 bugfixes, now it's functional.<br>
-Dec 16 2005; 0.2.0 support for deeper "++" and "--" labels. Also support for <code>.nop</code> statement.<br>
-Jun 20 2006; 1.0.0 raw output file format support in nescom. Also using boost::smart_ptr.<br>
-Jul 26 2006; 1.1.0 has now a linker, and an example program.<br>
-Jul 27 2006; 1.1.1 adds some consistency to ROM and NES address space conversions.<br>
-Sep 21 2006; 1.1.2 adds clever_disasm and some documentation changes.<br>
-Oct  9 2006; 1.1.3 fixes a crash & memory leak bug.<br>
-May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.<br>
-Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.<br>
-Mar 27 2016; 1.1.8 added xa65 obj file support, and no longer depends on libboost.<br>
-
-</div><H2 id="bugs" class="level2"><a name="bugs"></a>5. Known bugs</H2><div class="level2" id="divbugs">
-
-<ul>
- <li><code>#include</code>d files aren't being properly preprocessed.</li>
- <li>memory mapping is not properly designed yet.</li>
-</ul>
-
-</div><H2 id="copying" class="level2"><a name="copying"></a>6. Copying</H2><div class="level2" id="divcopying">
-
-nescom has been written by Joel Yliluoma, a.k.a.
-<a href="http://iki.fi/bisqwit/">Bisqwit</a>,<br>
-and is distributed under the terms of the
-<a href="http://www.gnu.org/licenses/licenses.html#GPL">General Public License</a> (GPL).
-<p>
-If you happen to see this program useful for you, I'd
-appreciate if you tell me :) Perhaps it would motivate
-me to enhance the program.
-
-</div><H2 id="requirements" class="level2"><a name="requirements"></a>7. Requirements</H2><div class="level2" id="divrequirements">
-
-nescom uses <a href="http://gcc.gnu.org/">GCC</a> as a slave in
-the preprocessing phase. Therefore, GCC must be installed and found
-in the PATH when running nescom.
-
-</div><H2 id="download" class="level2"><a name="download"></a>8. Downloading</H2><div class="level2" id="divdownload">
-   The official home page of nescom
-   is at <a href="http://iki.fi/bisqwit/source/nescom.html">http://iki.fi/bisqwit/source/nescom.html</a>.<br>
+$url = 'http://iki.fi/bisqwit/source/'.rawurlencode($progname).'.html';
+$k = '
+   The official home page of '.htmlspecialchars($progname).'
+   is at <a href="'.htmlspecialchars($url).'">'.htmlspecialchars($url).'</a>.<br>
    Check there for new versions.
-<p>Additionally, the most recent source code (bleeding edge) for nescom can also be downloaded by cloning the Git repository by:<ul style="margin-left:3em;margin-top:0px"><li><code> git clone <a href="git://bisqwit.iki.fi/nescom.git">git://bisqwit.iki.fi/nescom.git</a></code></li><li><code> git checkout origin/release -b release</code></li><li><code> git checkout origin/master  -b master</code></li></ul></p></div> <p align=right><small>Generated from
-       <tt>progdesc.php</tt> (last updated: Sun, 27 Mar 2016 21:19:10 +0300)<br>
-  with <tt>docmaker.php</tt> (last updated: Sun, 27 Mar 2016 21:19:10 +0300)<br>
-  at Sun, 27 Mar 2016 21:19:10 +0300</small>
+';
+if(isset($git))
+{
+  $k .=
+    '<p>'.
+    'Additionally, the most recent source code (bleeding edge) for '.htmlspecialchars($progname).
+    ' can also be downloaded by cloning the Git repository'.
+    ' by:<ul style="margin-left:3em;margin-top:0px">'.
+    '<li><code> git clone <a href="'.htmlspecialchars($git).'">'.htmlspecialchars($git).'</a></code></li>'.
+    '<li><code> git checkout origin/release -b release</code></li>'.
+    '<li><code> git checkout origin/master  -b master</code></li>'.
+    '</ul></p>';
+}
+$text['download:99999. Downloading'] = $k;
+
+include $docformatfn;
+
+$st1 = stat($docmodulefn);
+$st2 = stat('docmaker.php');
+?>
+ <p align=right><small>Generated from
+       <tt>progdesc.php</tt> (last updated: Thu, 01 Jan 1970 02:00:00 +0200)<br>
+  with <tt>docmaker.php</tt> (last updated: Thu, 01 Jan 1970 02:00:00 +0200)<br>
+  at Sat, 14 May 2016 15:00:53 +0300</small>
  </p>
 </body>
 </html>
+<?
+
+if($outset)
+{
+  $s = ob_get_contents();
+  ob_end_clean();
+  if(file_exists('/usr/local/bin/htmlrecode'))
+  {
+    /* Try to ensure browser interpretes japanese characters correctly */
+    passthru('echo '.shellfix($s).
+             '|/usr/local/bin/htmlrecode -Iiso-8859-1 -O'.$outset.' 2>/dev/null');
+  }
+  else
+    print $s;
+}

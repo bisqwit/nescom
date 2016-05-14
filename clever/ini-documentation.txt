@@ -1,0 +1,213 @@
+(* clever-disasm's INI file is a text file that has the following syntax, described in EBNF:  *)
+
+	syntax =
+		{	comment		CRLF
+		|	definition	CRLF
+		|	CRLF
+		}	EOF;
+
+	comment =
+		"#"	?all characters except CRLF? ;
+
+	definition =
+			ram-definition
+		|	data-code-definition
+		|	table-definition
+		|	special-routine-definition
+		;
+	
+	(* RAM-definition assigns a identifier to the given RAM address.
+	 * The RAM address may be given in hex or decimal, and has the valid range of $0000-$5FFF.
+	 * 
+	 * Examples: RAM $2001 PPUMASK
+	 *           RAM $0022 FrameCounter
+	 *)
+	ram-definition = "RAM" address identifier ;
+	
+	(* Data and code definitions allow you to influence the disassembler's function
+	 * and to assign labels to spots in the ROM.
+	 *
+	 * You usually use either CertainlyCode or CertainlyData. The MaybeCode and MaybeData
+	 * options are of lesser influence and rarely used.
+	 * Address is the address of the item within the ROM, e.g.
+	 * the first byte of the ROM is $0000 and the last byte for a 128-kilobyte ROM is $1FFFF.
+	 *
+	 * For data types, you can also give the width of the data (the integer after identifier).
+	 * The width only affects how the data is formatted.
+	 * Example: CertainlyData $1F7F1 TileQuads1 4
+	 *          Marks $1F7F1 as data, assigns it a label "TileQuads1".
+	 *          When disassembling, the data will be printed in groups of 4 bytes.
+	 *
+	 * The last integer can be used to give knowledge about the current state of the memory
+	 * mapper when this code is executed or these pointers are interpreted.
+	 * The number is integerpreted as follows:
+	 *   $8000 is pointed to N * $4000 + $0000
+	 *   $A000 is pointed to N * $4000 + $2000
+	 *   $C000 is not affected from the default guess
+	 *   $E000 is not affected from the default guess
+	 *
+	 * Example: CertainlyCode $1F36F NMIhandler4_LoadingCrossroad 0 $3
+	 *          When this code is disassembled, NES address space $8000-$BFFF
+	 *          is assumed to point into ROM page 3 ($8000-$BFFF) as opposed
+	 *          to the possible default of 0 ($0000-$3FFF of ROM space).
+	 *)
+	data-code-definition = ( "CertainlyCode" | "MaybeCode"
+	                       | "CertainlyData" | "MaybeData"
+	                       ) address    (* Where the code or data begins *)
+	                        [identifier (* Label for this code or data *)
+	                        [integer    (* Width of data for dumping *)
+	                        [integer    (* Mapping knowledge *)
+	                        ]]];
+
+	(* Table-definition allows defining pointer tables.
+	 * There are two types of pointer tables:
+	 * - Tables that contain pointers to code or data
+	 * - Tables that contain pointers to tables that contain pointers to code or data.
+	 *
+	 * E.g. JumpJumpTable is a table that contains pointers to JumpTables.
+	 *      JumpTable is a table that contains pointers to code.
+	 *
+	 * Examples:
+	 *   JumpTable $7409 $740A 2 6 FinalConfrontationOperations
+	 *      Declares a table of 6 pointers to code.
+	 *      The table occupies 12 bytes of memory from $7409 to $7414,
+	 *      and is interleaved such that each pointer is 2 successive bytes;
+	 *      the first byte is the low byte of the pointer and the second is the high byte.
+	 *
+	 *  DataTable $346C $3481 1 17 EnemyObjectPointerTable
+	 *   	Declares a table of 17 pointers to data.
+	 *      The table occupies 17 bytes of memory from $346C to $347C
+	 *                     and 17 bytes of memory from $3481 to $3491.
+	 *      The first region contains the low bytes of the pointers, 
+	 *      and the second region contains the high bytes of the pointers.
+	 *
+	 * DataTable $5AC0 $5AC1 2 2  LevelData_Actors_1_Mansions_7_Berkeley_2rooms 0 $1
+	 *      The pointers in this table point to page 1 ($4000-$7FFF).
+	 * 
+	 * JumpTable $123C $123D 2 12 EnemyAI_Table 1
+	 *      The values in this table point to 1 byte before the actual routine.
+	 *      I.e. if the table has pointer $D29A, the actual code is located at $D29B.
+	 *      This kind of tables often occur when RTS is used to jump to that location.
+	 *)
+	table-definition = ( "JumpTable" | "JumpJumpTable"
+	                   | "DataTable" | "DataDataTable"
+	                   ) address    (* Where low bytes of the pointers are *)
+	                     address    (* Where high bytes of the pointers are *)
+	                     integer    (* Distance between successive items in the table *)
+	                    [integer    (* Number of elements in the table (default: autodetected) *)
+	                    [identifier (* Name for the table *)
+	                    [integer    (* Offset to add to each pointer in the table *)
+	                    [integer    (* Mapping knowledge, see data-code-definition *)
+	                    ]]]];
+
+	(* Special routines are various special kinds of routines,
+	 * answering particular use-cases found in the wild.
+	 *
+	 *     Example: DataTableRoutineWithXY $25A8
+	 *
+	 *        Answers this use-case:
+	 *            $8589  A2 93:       ldx #<_data_0593_indexed
+	 *            $858B  A0 85:       ldy #>_data_0593_indexed
+	 *            $858D  20 A8 A5:    jsr _func_25A8
+	 *
+	 *        DataTableRoutineWithXY defines the location of a routine where
+	 *        upon call, X and Y hold a pointer to data. The address formed
+	 *        by these two registers is automatically marked as indexed data.
+	 *
+	 *        DataTableRoutineWithYX is similar, but with the meanings of X and Y swapped.
+	 *      
+	 *    Example: CertainlyCode $0F98 DoSomethingFifths
+	 *             TerminatedStringRoutine $0F98 5 $FF
+	 *
+	 *        Answers this use-case:
+	 *            $CF3A  20 98 CF:    jsr DoSomethingFifths
+	 *            $CF3D               .byte $03,$03,$03,$04,$02, $18,$03,$1A,$03,$03   
+	 *            $CF47               .byte $FF
+	 *            $CF48  20 45 CA:    jsr PPUEnableVblankInterrupt
+	 *
+	 *        TerminatedStringRoutine marks such a routine that every time
+	 *        the routine is called, immediately after the call there will
+	 *        be data that is terminated by a given byte. A grouping width
+	 *        can also be given, as with CertainlyData.
+	 *
+	 *    Example: CertainlyCode $61F8 BIOS_LoadFiles
+	 *             TrailerParamRoutine $61F8 4
+	 *
+	 *        Answers this use-case:
+	 *            $EF59  20 F8 E1:    jsr BIOS_LoadFiles
+	 *            $EF5C               .word $EFF5,$EFF5
+	 *            $EF60  D0 0A:       bne $EF6C
+	 *
+	 *        Similar to TerminatedStringRoutine, but here the trailing parameter
+	 *        has a fixed length instead of having a terminating byte.
+	 *
+	 *    Example: CertainlyCode $0E04  magic_jump
+	 *             JumpTableRoutineWithAppendix $0E04
+	 *
+	 *        Answers this use-case:
+	 *            $83A3  20 04 8E:    jsr magic_jump
+	 *            _JumpPointerTable_03A6
+	 *            $83A6  EC CF:       .word (JumpTableEntry_4FEC) ;CFEC (4FEC) ()
+	 *            $83A8  B0 83:       .word (JumpTableEntry_03B0) ;83B0 (3B0) ()
+	 *            $83AA  BD 83:       .word (JumpTableEntry_03BD) ;83BD (3BD) () 
+	 *            $83AC  F6 83:       .word (JumpTableEntry_03F6) ;83F6 (3F6) ()
+	 *            $83AE  61 84:       .word (JumpTableEntry_0461) ;8461 (461) ()
+	 *            JumpTableEntry_03B0
+	 *            $83B0  AE 1B 07:    ldx $071B
+	 *
+	 *        Similar to TerminatedStringRoutine, but automatically declares
+	 *        a jump table right after the call. The length is automatically
+	 *        determined.
+	 *
+	 *    Examples:
+	 *        MapperChangeRoutine $1C1D8 reg Y
+	 *        MapperChangeRoutine $1C1D6 reg Y
+	 *        MapperChangeRoutine $1C1D4 const 6
+	 *        MapperChangeRoutine $1C1CF ram $27
+	 *        MapperChangeRoutine $1FFA0 $A000 reg A
+	 *
+	 *        Defines a routine that always sets the ROM bank mappings for $8000-$BFFF
+	 *        to the given value. I can't remember what that second integer is for.
+	 *
+	 *    Example: CertainlyCode $1F855 TrampolineCall_YA_in_Bank_A
+	 *             TrampolineRoutine $1F855 A Y X
+	 *
+	 *        Answers this use-case:
+         *            $849F  A9 05:       lda #$05
+         *            $84A1  A2 E7:       ldx #<ReadCurrentPlayerJoypad
+         *            $84A3  A0 B9:       ldy #>ReadCurrentPlayerJoypad
+         *            $84A5  20 55 F8:    jsr TrampolineCall_YA_in_Bank_A
+         *
+         *        Similar to DataTableRoutineWithXY. Defines a function that always
+         *        calls another function whose address is given in CPU registers,
+         *        within a memory bank that is given in CPU registers.
+         *        The first parameter defines which register holds the memory bank number.
+         *        The second parameter defines which register holds the high byte of the
+         *        address, and the third parameter for the low byte of the address respectively.
+         *
+	 *)
+	special-routine-definition =
+		"DataTableRoutineWithXY"  address
+	|	"DataTableRoutineWithYX"  address
+	|	"TerminatedStringRoutine" address integer(*width*) integer(*terminator*)
+	|	"TrailerParamRoutine"     address integer(*length*)
+	|       "JumpTableRoutineWithAppendix" address
+	|       "MapperChangeRoutine"     address [ integer ] ( "const"
+	                                                      | "RAM"  address
+	                                                      | "reg"  ("A" | "X" | "Y")
+	                                                      )
+	|	"TrampolineRoutine"       address ("A"|"X"|"Y") ("A"|"X"|"Y") ("A"|"X"|"Y");
+
+
+
+	digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+	letter = "A" | "B" | "C" | "D" | "E" | "F" | "G"
+	       | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+	       | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+	       | "V" | "W" | "X" | "Y" | "Z" | "_";
+	hexdigit = "A" | "B" | "C" | "D" | "E" | "F" | digit;
+	decimal-integer     = [ "-" ] , digit , { digit };
+	hexadecimal-integer = "$" , hexdigit , { hexdigit };
+	identifier	    = letter , { letter | digit };
+	integer = decimal-integer | hexadecimal-integer;
+	address = integer;
