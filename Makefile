@@ -24,8 +24,10 @@ LD=$(CXX)
 
 DEPDIRS =
 
-OPTIM=-Ofast -std=c++14
-# -fsanitize=address
+CXX += -std=c++14
+
+OPTIM = -Ofast
+#OPTIM = -Og -fsanitize=address
 
 CPPFLAGS += -I.
 
