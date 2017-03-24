@@ -9,7 +9,7 @@
 #include <map>
 #include <stdint.h>
 
-//#define DEBUG_MAPPINGS
+#define DEBUG_MAPPINGS
 //#define DEBUG_MAPPINGS_VERBOSE
 
 //#define TRACK_RAM_SIZE 0x800
@@ -64,18 +64,18 @@ static unsigned addr_to_rom(unsigned addrptr)
 
 static unsigned rom_to_addr(unsigned romptr, bool use_mappings, bool set_mappings)
 {
-    unsigned rompage = romptr >> 13;
-    unsigned romaddr = romptr & 0x1FFF;
+    unsigned rompage = romptr / 0x2000u;
+    unsigned romaddr = romptr % 0x2000u;
 
     if(use_mappings)
     {
-        for(unsigned c=0x10000; (c-=0x2000)>=0x8000; )
-            if(rompage*0x2000 == addr_to_rom(c))
-                return c + romaddr;
+        if(rompage*0x2000 == addr_to_rom(0xE000)) return 0xE000 + romaddr;
+        if(rompage*0x2000 == addr_to_rom(0xC000)) return 0xC000 + romaddr;
+        if(rompage*0x2000 == addr_to_rom(0xA000)) return 0xA000 + romaddr;
+        if(rompage*0x2000 == addr_to_rom(0x8000)) return 0x8000 + romaddr;
     }
 
-#if 1 /* Akumajou Densetsu */
-    if(MapperNum == 24)
+    if(MapperNum == 24) /* Akumajou Densetsu */
     {
         if(rompage == 7 || rompage == 0x1E)
         {
@@ -88,7 +88,6 @@ static unsigned rom_to_addr(unsigned romptr, bool use_mappings, bool set_mapping
             return 0xE000+romaddr;
         }
     }
-#endif
 
     if(MapperNum == 4) // MMC3
     {
@@ -126,11 +125,26 @@ static unsigned rom_to_addr(unsigned romptr, bool use_mappings, bool set_mapping
         return 0x8000 + (romptr & 0x7FFF);
     }
 
+    if(MapperNum == 9) // PxROM
+    {
+        if(rompage == LastPage-0
+        || rompage == LastPage-1
+        || rompage == LastPage-2)
+        {
+            if(set_mappings) SetPage(5, LastPage-2);
+            if(set_mappings) SetPage(6, LastPage-1);
+            if(set_mappings) SetPage(7, LastPage-0);
+            return 0x8000 + (romaddr & 0x1FFF) + (rompage&3)*0x2000;
+        }
+        if(set_mappings) SetPage(4, rompage);
+        return 0x8000 + (romaddr & 0x1FFF);
+    }
+
     if(rompage == LastPage
     || rompage == LastPage-1)
     {
         if(set_mappings) SetPage(6, LastPage-1);
-        if(set_mappings) SetPage(7, LastPage);
+        if(set_mappings) SetPage(7, LastPage-0);
         return 0xC000 + romaddr + (rompage&1)*0x2000;
     }
     if(set_mappings) SetPage(4, (rompage&~1));
@@ -318,6 +332,7 @@ enum SpecialTypes
     MapperChangeRoutineWithRAM,
     TerminatedStringRoutine,
     TrailerParamRoutine,
+    TrailerParamRoutineWithLength,
     TrampolineRoutine,            // Takes bank, address in 3 registers
     TrampolineRoutineWithAppendix // Takes bank, address as appendix
 };
@@ -668,7 +683,7 @@ struct SimulCPU
         //printf("MapperWrite(%04X,mappernum=%d)\n", addr,MapperNum);
         switch(MapperNum)
         {
-            case 2: // e.g. Rockman, Castlevania
+            case 2: // e.g. Rockman, Castlevania, Swords and Serpents
                 if(addr < 0x8000) break;
                 if(reg.Known())
                 {
@@ -680,6 +695,16 @@ struct SimulCPU
                 {
                     pagereg[0].MakeWeak();
                     pagereg[1].MakeWeak();
+                }
+                break;
+
+            case 9: // PxROM (Punch-Out)
+                if((addr / 0x1000u) == 0xA)
+                {
+                    if(reg.Known())
+                        SetPageReg(0, reg.Value(), false);
+                    else
+                        pagereg[0].MakeWeak();
                 }
                 break;
 
@@ -838,11 +863,17 @@ struct SimulCPU
         switch(MapperNum)
         {
             case 1: // MMC1 (Works nicely for Simon's Quest as well)
-            case 2: // UxROM (Rockman, Castlevania)
+            case 2: // UxROM (Rockman, Castlevania, Swords & Serpents)
             {
                 // param2 is ignored
                 mul[0] = 2; add[0] = 0;
                 mul[1] = 2; add[1] = 1;
+                break;
+            }
+            case 9: // PxROM (Punch-Out)
+            {
+                // param2 is ignored
+                mul[0] = 1; add[0] = 0;
                 break;
             }
             case 4: // MMC3
@@ -2223,6 +2254,17 @@ public:
                         for(int n=0; n<4; ++n)
                             SetPage(n, (targetptr/0x8000)*4+n);
                 }
+                else if(MapperNum == 9)
+                {
+                    if(targetptr/0x2000 == rom_to_addr(romptr,true,false)/0x2000)
+                    {
+                        SetPage(targetptr/0x2000, romptr/0x2000);
+                    }
+                    else
+                    {
+                        //results[romptr].cpu.LoadMap();  - already done by rom_to_addr?
+                    }
+                }
                 else
                 {
                     if(targetptr/0x4000 == rom_to_addr(romptr,true,false)/0x4000)
@@ -2472,6 +2514,16 @@ private:
         }
         return res;
     }
+    bool IsTrailerParamRoutineWithLength(const unsigned romptr, unsigned& param, unsigned& param2) const
+    {
+        bool res = IsSpecialType(romptr, TrailerParamRoutineWithLength);
+        if(res)
+        {
+            param  = results[romptr].SpecialTypeParam;
+            param2 = results[romptr].SpecialTypeParam2;
+        }
+        return res;
+    }
     bool IsDataTableRoutineWithXY(const unsigned romptr) const
     {
         return IsSpecialType(romptr, DataTableRoutineWithXY);
@@ -2560,6 +2612,10 @@ private:
         if(MapperNum == 7)
         {
             for(int n=0; n<4; ++n) state.cpu.ImportMap(n, true);
+        }
+        else if(MapperNum == 9)
+        {
+            state.cpu.ImportMap(0, true);
         }
         else
         {
@@ -2832,6 +2888,14 @@ private:
                         Mark(Next + param, CertainlyCode);
                     } }
 
+                    { unsigned param, param2;
+                    if(IsTrailerParamRoutineWithLength(Branch, param, param2))
+                    {
+                        if(results[Next].Type >= Unknown) Mark(Next, CertainlyData);
+                        unsigned length = ROM[Next + param] + param2;
+                        Mark(Next + length, CertainlyCode);
+                    } }
+
                     if(IsDataTableRoutineWithXY(Branch)
                     || IsDataTableRoutineWithYX(Branch)
                     || IsDataTableRoutineWithAY(Branch)
@@ -3097,6 +3161,8 @@ private:
                 {
                     case Zp://passthru
                     case Ab:
+                    case Ax:
+                    case Ay:
                         if(code.Param < TRACK_RAM_SIZE)
                         {
                             state.cpu.RAM[code.Param].Assign(state.cpu.A, (int)romptr);
@@ -3619,6 +3685,15 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             dasm.SetSpecialType(address, TrailerParamRoutine, param);
             continue;
         }
+        if(tokens[0] == "TrailerParamRoutineWithLength")
+        {
+            if(tokens.size() != 4) goto SyntaxError;
+            int address     = ParseInt(tokens[1]);
+            int length_at   = ParseInt(tokens[2]);
+            int length_plus = ParseInt(tokens[3]);
+            dasm.SetSpecialType(address, TrailerParamRoutineWithLength, length_at, length_plus);
+            continue;
+        }
         if(tokens[0] == "JumpTableRoutineWithAppendix")
         {
             if(tokens.size() < 2) goto SyntaxError;
@@ -3804,14 +3879,16 @@ static void DisAsm(unsigned size, FILE* inifile = 0)
     SetPage(4, 0);
     SetPage(5, 1);
     SetPage(6, LastPage-1);
-    SetPage(7, LastPage);
+    SetPage(7, LastPage-0);
 
     if(MapperNum == 7)
     {
         SetPage(4, LastPage-3);
         SetPage(5, LastPage-2);
-        SetPage(6, LastPage-1);
-        SetPage(7, LastPage-0);
+    }
+    if(MapperNum == 9)
+    {
+        SetPage(5, LastPage-2);
     }
 
     DumpMappings();
