@@ -6,8 +6,6 @@
 
 /* This program disassembles an IPS file. */
 
-using namespace std;
-
 #include "miscfun.hh"
 #include "o65linker.hh"
 #include "romaddr.hh"
@@ -35,16 +33,16 @@ static int HandleIPS()
     for(;;)
     {
         unsigned char Buf[2048];
-        int wanted,c = fread(Buf, 1, 3, stdin);
-        if(c < 0 && ferror(stdin)) { ipserr: perror("fread"); arf: return -1; }
+        int wanted,c = std::fread(Buf, 1, 3, stdin);
+        if(c < 0 && ferror(stdin)) { ipserr: perror("std::fread"); arf: return -1; }
         if(c < (wanted=3)) { ipseof:
             fprintf(stderr, "Unexpected end of file - wanted %d, got %d\n", wanted, c);
             goto arf; }
-        if(!strncmp((const char *)Buf, "EOF", 3))break;
+        if(!std::strncmp((const char *)Buf, "EOF", 3))break;
         unsigned pos = (((unsigned)Buf[0]) << 16)
                       |(((unsigned)Buf[1]) << 8)
                       | ((unsigned)Buf[2]);
-        c = fread(Buf, 1, 2, stdin);
+        c = std::fread(Buf, 1, 2, stdin);
         if(c < 0 && ferror(stdin)) { fprintf(stderr, "Got pos %X\n", pos); goto ipserr; }
         if(c < (wanted=2)) { goto ipseof; }
         unsigned len = (((unsigned)Buf[0]) << 8)
@@ -54,17 +52,17 @@ static int HandleIPS()
         if(!len)
         {
             rle=true;
-            c = fread(Buf, 1, 2, stdin);
+            c = std::fread(Buf, 1, 2, stdin);
             if(c < 0 && ferror(stdin)) { fprintf(stderr, "Got pos %X\n", pos); goto ipserr; }
             if(c < (wanted=2)) { goto ipseof; }
             len = (((unsigned)Buf[0]) << 8)
                  | ((unsigned)Buf[1]);
         }
 
-        vector<unsigned char> Buf2(len);
+        std::vector<unsigned char> Buf2(len);
         if(rle)
         {
-            c = fread(&Buf2[0], 1, 1, stdin);
+            c = std::fread(&Buf2[0], 1, 1, stdin);
             if(c < 0 && ferror(stdin)) { goto ipserr; }
             if(c != (wanted=(int)1)) { goto ipseof; }
             for(unsigned c=1; c<len; ++c)
@@ -72,7 +70,7 @@ static int HandleIPS()
         }
         else
         {
-            c = fread(&Buf2[0], 1, len, stdin);
+            c = std::fread(&Buf2[0], 1, len, stdin);
             if(c < 0 && ferror(stdin)) { goto ipserr; }
             if(c != (wanted=(int)len)) { goto ipseof; }
         }
@@ -142,18 +140,55 @@ static int HandleIPS()
     }
     return 0;
 }
+static int HandleNES()
+{
+    std::fseek(stdin, -5, SEEK_CUR);
+    // Read the full NES header
+    unsigned char Buf[65536];
+    std::fread(Buf, 16, 1, stdin);
+    unsigned rom16count = Buf[4];
+    unsigned vrom8count = Buf[5];
+    unsigned ctrlbyte   = Buf[6];
+    unsigned mappernum  = Buf[7] | (ctrlbyte >> 4); ctrlbyte &= 0xF;
+    ROMmap_npages = rom16count;
+    printf(".nes_header %u,%u,$%02X,%u\n", rom16count,vrom8count,ctrlbyte,mappernum);
+
+    unsigned vectors = (rom16count-1)*0x4000+0x3FFA;
+    std::fseek(stdin, 16+vectors, SEEK_SET);
+    std::fread(Buf, 6, 1, stdin);
+    for(auto p: std::initializer_list<std::pair<const char*,unsigned>>{{"NMI",0},{"RES",1},{"INT",2}})
+    {
+        RelocVarList.push_back(p.first);
+        Relocs.R16.Relocs.emplace_back(0xFFFA+p.second*2, p.second);
+        Relocs.R16.Fixups.emplace_back(CODE, 0xFFFA+p.second*2);
+        unsigned addr = NES2ROMaddr(Buf[p.second*2] + 256*Buf[p.second*2+1]);
+        Globals[CODE].emplace(addr, p.first);
+    }
+    std::fseek(stdin, 16, SEEK_SET);
+    for(unsigned r=0; r<rom16count; ++r)
+    {
+        std::fread(Buf, 0x4000, 1, stdin);
+        DisAsm(ROM2NESaddr(r*0x4000), Buf, 0x4000, CODE);
+    }
+    for(unsigned r=0; r<vrom8count; ++r)
+    {
+        std::fread(Buf, 0x2000, 1, stdin);
+        DisAsm(r*0x2000, Buf, 0x4000, DATA);
+    }
+    return 0;
+}
 static int HandleFDS(int num_sides, bool headered)
 {
     // Skip the remainder of FDS header
     if(headered)
-        { char Buf[16-5]; fread(Buf, 1, sizeof(Buf), stdin); }
+        { char Buf[16-5]; std::fread(Buf, 1, sizeof(Buf), stdin); }
     else
-        fseek(stdin, -5, SEEK_CUR);
+        std::fseek(stdin, -5, SEEK_CUR);
 
     for(int side = 0; side < num_sides; ++side)
     {
         unsigned char Buf[65500] = { 0 };
-        fread(Buf, 1, sizeof(Buf), stdin);
+        std::fread(Buf, 1, sizeof(Buf), stdin);
 
         unsigned length       = 1;
         unsigned base_address = 0;
@@ -286,24 +321,26 @@ int main(int argc, const char *const *argv)
             "IPS, O65 or raw formats are allowed.\n"
         );
     }
-    vector<unsigned char> code;
+    std::vector<unsigned char> code;
     bool first=true;
     for(;;)
     {
         char Buf[2048];
         int c = first ? 5 : sizeof Buf;
-        c = fread(Buf, 1, c, stdin);
+        c = std::fread(Buf, 1, c, stdin);
         if(c <= 0) break;
 
         if(first)
         {
-            if(!strncmp(Buf, "PATCH", 5))
+            if(!std::strncmp(Buf, "PATCH", 5))
                 return HandleIPS();
-            if(!strncmp(Buf+2, "o65", 3) || !strncmp(Buf, "Uzna", 4))
+            if(!std::strncmp(Buf, "NES\x1A", 4))
+                return HandleNES();
+            if(!std::strncmp(Buf+2, "o65", 3) || !std::strncmp(Buf, "Uzna", 4))
                 return HandleO65();
-            if(!strncmp(Buf, "FDS\x1A", 4))
+            if(!std::strncmp(Buf, "FDS\x1A", 4))
                 return HandleFDS(Buf[4], true);
-            if(!strncmp(Buf, "\1*NIN", 5))
+            if(!std::strncmp(Buf, "\1*NIN", 5))
                 return HandleFDS(2, false);
             first = false;
         }
@@ -424,7 +461,7 @@ static std::string DumpInt2(unsigned address, const unsigned char* data, bool is
         if(re.second == address)
             return "!" + FindFixupAnchor(re.first, param, true, false);
     }
-End:
+//End:
     if(is_code) return format("$%04X", FixCodeAddr(param))+fix;
     return format("$%04X", param)+fix;
 }

@@ -3769,6 +3769,9 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
             int regno1 = (reg1 == "A" || reg1 == "a") ? 0 : (reg1 == "X" || reg1 == "x") ? 1 : (reg1 == "Y" || reg1 == "y") ? 2 : -1;
             int regno2 = (reg2 == "A" || reg2 == "a") ? 0 : (reg2 == "X" || reg2 == "x") ? 1 : (reg2 == "Y" || reg2 == "y") ? 2 : -1;
             int regno3 = (reg3 == "A" || reg3 == "a") ? 0 : (reg3 == "X" || reg3 == "x") ? 1 : (reg3 == "Y" || reg3 == "y") ? 2 : -1;
+
+            //if(regno1 == -1 && reg1[0] == '$') regno1 = 
+
             if(regno1 < 0) fprintf(stderr, "Invalid register for TrampolineRoutine: '%s'\n", reg1.c_str());
             if(regno2 < 0) fprintf(stderr, "Invalid register for TrampolineRoutine: '%s'\n", reg2.c_str());
             if(regno3 < 0) fprintf(stderr, "Invalid register for TrampolineRoutine: '%s'\n", reg3.c_str());

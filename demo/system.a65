@@ -1,0 +1,120 @@
+; Ensure this important stuff goes to the last page.
+; In a 4-page ROM (64k), there are four pages: 0, 1, 2 and 3.
+; This module goes to page 3. It won't be swapped out in any event.
+
+.zero
+; Vars in the zeropage.
+CurrentBank .byt 0
+
+.text
+.link page 3
+
+RESET:
+	sei
+	cld
+	ldx #$FF : txs
+	
+	; Clear RAM
+	ldy #0 : tya : sta 0 ;X=$FF
+	; While this clears $00-$FF, the pointer variable,
+	; which is in zeropage, already contains $0000,
+	; so it does not matter that it overwrites it.
+	-- inx
+	   stx 1
+	 - sta (0),y : iny : bne -
+	 cpx #7 : bne --
+	sta 1
+
+	;ldx #1 : txs
+
+	; Load the bank where RESET_GAME is, and jump there.
+	lda #^RESET_GAME : jsr SwitchBank
+	jmp RESET_GAME
+
+
+NMI:
+.(
+	pha
+	txa: pha
+	tya: pha
+	lda CurrentBank: pha
+
+#define SOUND_BUFFER_SIZE 16
+
+CallSoundCode:
+	 ; Currently our NMI does nothing but calls Capcom's music engine.
+
+	 ; Choose the page of the sound code routine.
+	 lda #^SoundCodePlay: jsr SwitchBank
+
+	 ; Call the periodic sound processor
+	 jsr SoundCodePlay
+	 
+	 ; Check if a sound change was requested
+.(
+    -	 ldx <NumIssuedSounds
+	 beq +++
+	 lda IssuedSoundsList-1,x
+	 ; Process 00..3F and FC..FF, ignore 40..FB
+	 ldy #$00
+    +	 cmp #$FC : bcs +
+	 cmp #$40 : bcs ++
+    +	 jsr SoundCodeInit
+    	 ; Done processing
+    ++	 dec <NumIssuedSounds
+ 	 bne -
+    +++	 ; Done with sound change processing
+.)
+
+NMIexit:
+	pla : jsr SwitchBank
+	pla : tay
+	pla : tax
+	pla
+	rti
+.)
+
+IRQ:
+	- lda $ABCD : jmp -
+
+SwitchBank:
+	sta CurrentBank
+SwitchBankCurrent:
+	txa
+	pha
+	 lda CurrentBank
+	 tax
+	 sta $C000,x
+	pla
+	tax
+	rts
+
+
+#if 0
+;incomplete code...
+.zero
+.byt  CalleeBank
+.word GotoAddr
+.text
+CallBank:
+	sta CalleeBank
+	lda CurrentBank : pha
+	sta $C000
+	pla : sta GotoAddr+0
+	pla : sta GotoAddr+1
+	tya : pha
+	txa : pha
+	 lda #0 : tay
+	  lda (GotoAddr), y
+	  tax
+	 lda #1 : tay
+	  lda (GotoAddr), y
+	  sta GotoAddr+1
+	  txa
+	  sta GotoAddr+0
+	pla : tax
+	pla : tay
+	lda CurrentBank : pha
+	 lda CalleeBank : sta $C000
+	 jmp (
+#endif	

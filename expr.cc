@@ -1,204 +1,217 @@
 #include "expr.hh"
 
-void expression::Optimize(expression*& self_ptr)
+void expression::Optimize(std::unique_ptr<expression>& self_ptr)
 {
+    if(self_ptr.get() != this) return;
     if(IsConst() && !dynamic_cast<class expr_number*> (this) )
     {
-        self_ptr = new expr_number(GetConst());
-        delete this;
+        self_ptr = std::unique_ptr<expression>(new expr_number(GetConst()));
     }
 }
 
-void expr_bitnot::Optimize(expression*& self_ptr)
+void expr_bitnot::Optimize(std::unique_ptr<expression>& self_ptr)
 {
     expr_unary::Optimize(self_ptr);
-    if(self_ptr != this) return;
-    if(expr_bitnot* tmp = dynamic_cast<expr_bitnot*> (sub))
+    if(self_ptr.get() != this) return;
+    if(expr_bitnot* tmp = dynamic_cast<expr_bitnot*> (sub.get()))
     {
-        self_ptr = tmp->sub;
-        tmp->sub = NULL; /* to prevent it from being deleted */
-        delete this; /* also deletes sub */
+        self_ptr = std::move(tmp->sub);
     }
 }
 
-void expr_negate::Optimize(expression*& self_ptr)
+void expr_negate::Optimize(std::unique_ptr<expression>& self_ptr)
 {
     expr_unary::Optimize(self_ptr);
-    if(self_ptr != this) return;
-    if(sum_group*s = dynamic_cast<sum_group*> (sub))
+    if(self_ptr.get() != this) return;
+    if(sum_group* s = dynamic_cast<sum_group*> (sub.get()))
     {
         s->Negate();
-        self_ptr = sub;
-        
-        sub = NULL;
-        delete this;
+        self_ptr = std::move(sub);
         return;
     }
-    if(expr_negate* tmp = dynamic_cast<expr_negate*> (sub))
+    if(expr_negate* tmp = dynamic_cast<expr_negate*> (sub.get()))
     {
-        self_ptr = tmp->sub;
-        tmp->sub = NULL; /* to prevent it from being deleted */
-        delete this; /* also deletes sub */
+        self_ptr = std::move(tmp->sub);
     }
 }
 
-void SubstituteExprLabel(expression*& e, const std::string& name, long value, bool del_old)
+void SubstituteExprLabel(std::unique_ptr<expression>& e, const std::string& name, long value)
 {
-    bool del_children = del_old;
-
-    if(expr_label* l = dynamic_cast<expr_label*> (e))
+    if(expr_label* l = dynamic_cast<expr_label*> (e.get()))
     {
         if(l->GetName() == name)
         {
-            e = new expr_number(value);
-            if(del_old) delete l;
+            e = std::unique_ptr<expression>(new expr_number(value));
         }
     }
-    else if(expr_unary* u = dynamic_cast<expr_unary*> (e))
+    else if(expr_unary* u = dynamic_cast<expr_unary*> (e.get()))
     {
-        SubstituteExprLabel(u->sub, name, value, del_children);
+        SubstituteExprLabel(u->sub, name, value);
     }
-    else if(expr_binary* b = dynamic_cast<expr_binary*> (e))
+    else if(expr_binary* b = dynamic_cast<expr_binary*> (e.get()))
     {
-        SubstituteExprLabel(b->left, name, value, del_children);
-        SubstituteExprLabel(b->right, name, value, del_children);
+        SubstituteExprLabel(b->left, name, value);
+        SubstituteExprLabel(b->right, name, value);
     }
-    else if(sum_group* s = dynamic_cast<sum_group*> (e))
+    else if(sum_group* s = dynamic_cast<sum_group*> (e.get()))
     {
-        for(sum_group::list_t::iterator
-            i = s->contents.begin(); i != s->contents.end(); ++i)
+        for(auto& child: s->contents)
         {
-            SubstituteExprLabel(i->first, name, value, del_children);
+            SubstituteExprLabel(child.first, name, value);
         }
     }
 }
 
-void FindExprUsedLabels(const expression* e, std::set<std::string>& labels)
+void FindExprUsedLabels(const std::unique_ptr<expression>& e, std::set<std::string>& labels)
 {
-    if(const expr_label* l = dynamic_cast<const expr_label*> (e))
+    if(const expr_label* l = dynamic_cast<const expr_label*> (e.get()))
     {
         labels.insert(l->GetName());
     }
-    else if(const expr_unary* u = dynamic_cast<const expr_unary*> (e))
+    else if(const expr_unary* u = dynamic_cast<const expr_unary*> (e.get()))
     {
         FindExprUsedLabels(u->sub, labels);
     }
-    else if(const expr_binary* b = dynamic_cast<const expr_binary*> (e))
+    else if(const expr_binary* b = dynamic_cast<const expr_binary*> (e.get()))
     {
         FindExprUsedLabels(b->left, labels);
         FindExprUsedLabels(b->right, labels);
     }
-    else if(const sum_group* s = dynamic_cast<const sum_group*> (e))
+    else if(const sum_group* s = dynamic_cast<const sum_group*> (e.get()))
     {
-        for(sum_group::list_t::const_iterator
-            i = s->contents.begin(); i != s->contents.end(); ++i)
+        for(const auto& child: s->contents)
         {
-            FindExprUsedLabels(i->first, labels);
+            FindExprUsedLabels(child.first, labels);
         }
     }
 }
 
-sum_group::sum_group(expression*l, expression*r, bool is_negative)
+sum_group::sum_group(std::unique_ptr<expression>&& l, std::unique_ptr<expression>&& r, bool is_negative)
 {
-     contents.push_back(std::make_pair(l, false));
-     contents.push_back(std::make_pair(r, is_negative));
+     contents.emplace_back(std::move(l), false);
+     contents.emplace_back(std::move(r), is_negative);
 }
 
 bool sum_group::IsConst() const
 {
-     for(list_t::const_iterator i = contents.begin(); i != contents.end(); ++i)
-          if(!i->first->IsConst()) return false;
+     for(const auto& child: contents)
+          if(!child.first->IsConst())
+              return false;
      return true;
 }
 long sum_group::GetConst() const
 {
      long result = 0;
-     for(list_t::const_iterator i = contents.begin(); i != contents.end(); ++i)
-          if(i->second)
-               result -= i->first->GetConst();
+     for(const auto& child: contents)
+          if(child.second)
+               result -= child.first->GetConst();
           else
-               result += i->first->GetConst();
+               result += child.first->GetConst();
+     //std::fprintf(stderr, "Const value: $%lX of '%s'\n", result, Dump().c_str());
      return result;
 }
 
 const std::string sum_group::Dump() const
 {
      std::string result = "(";
-     for(list_t::const_iterator i = contents.begin(); i != contents.end(); ++i)
+     for(const auto& child: contents)
      {
-          result += i->second ? '-' : '+';
-          result += i->first->Dump();
+          result += child.second ? '-' : '+';
+          result += child.first->Dump();
      }
      result += ')';
      return result;
 }
 
-void sum_group::Optimize(expression*& self_ptr)
+void sum_group::Optimize(std::unique_ptr<expression>& self_ptr)
 {
     long const_sum = 0;
-    for(list_t::iterator j,i = contents.begin(); i != contents.end(); i=j)
+    for(list_t::iterator i = contents.begin(); i != contents.end(); )
     {
-        j=i; ++j;
-    
-        expression*& e = i->first;
+        std::unique_ptr<expression>& e = i->first;
         e->Optimize(e);
-        if(expr_negate* n = dynamic_cast<expr_negate *> (e))
+        if(e->IsConst())
         {
-            i->second = !i->second;
-            
-            e = n->sub;
-            n->sub = NULL; delete n;
-        }
-        if(sum_group* s = dynamic_cast<sum_group *> (e))
-        {
-            if(i->second) s->Negate();
-            
-            contents.insert(contents.end(), s->contents.begin(), s->contents.end());
-            
-            contents.erase(i);
-        }
-        else if(e->IsConst())
-        {
+            //std::fprintf(stderr, "Found const (%ld)%s\n", e->GetConst(), i->second?" (negated)":"");
             if(i->second)
                 const_sum -= e->GetConst();
             else
                 const_sum += e->GetConst();
-            contents.erase(i);
+            i = contents.erase(i);
+            continue;
         }
+        if(expr_negate* n = dynamic_cast<expr_negate*> (e.get()))
+        {
+            *i = elem_t(std::move(n->sub), !i->second);
+            // Reanalyze same item
+            continue;
+        }
+        if(sum_group* s = dynamic_cast<sum_group*> (e.get()))
+        {
+            if(i->second) s->Negate();
+            contents.splice(contents.end(), std::move(s->contents));
+            i = contents.erase(i);
+            continue;
+        }
+        ++i;
     }
     if(contents.empty())
     {
-        self_ptr = new expr_number(const_sum);
-        delete this;
+        //std::fprintf(stderr, "Replaced with const sum=%ld\n", const_sum);
+        self_ptr = std::unique_ptr<expression>(new expr_number(const_sum));
         return;
     }
     if(const_sum)
     {
-        contents.push_back(std::make_pair(new expr_number(const_sum), false));
+        //std::fprintf(stderr, "Re-added const sum=%ld\n", const_sum);
+        contents.emplace_back(new expr_number(const_sum), false);
     }
     if(contents.size() == 1)
     {
         // Replace self with the first element.
-        list_t::iterator i = contents.begin();
-        self_ptr = i->first;
-        if(i->second)
+        auto& front = contents.front();
+        auto ptr = std::move(front.first);
+        if(front.second)
         {
             // Negate it if necessary.
-            self_ptr = new expr_negate(self_ptr);
+            ptr = std::unique_ptr<expression>(new expr_negate(std::move(ptr)));
         }
-        contents.erase(i);
-        delete this;
+        self_ptr = std::move(ptr);
     }
 }
 
 void sum_group::Negate()
 {
-    for(list_t::iterator i = contents.begin(); i != contents.end(); ++i)
-        i->second = !i->second;
+    for(auto& child: contents)
+        child.second = !child.second;
 }
 
-sum_group::~sum_group()
+std::pair<std::string, long> IsLabelSumExpression(const std::unique_ptr<expression>& e)
 {
-    for(list_t::const_iterator i = contents.begin(); i != contents.end(); ++i)
-        delete i->first;
+    if(sum_group* s = dynamic_cast<sum_group*> (e.get()))
+    {
+        std::pair<std::string, long> result{ {}, {} };
+        for(const auto& e: s->contents)
+        {
+            if(e.first->IsConst())
+                { long val = e.first->GetConst(); if(e.second) val=-val; result.second += val; }
+            else if(e.second || !result.first.empty())
+                return {}; // Failed
+            else
+            {
+                auto p = IsLabelSumExpression(e.first);
+                if(p.first.empty()) return {}; // Failed
+                result.first  = p.first;
+                result.second += p.second;
+            }
+        }
+        return result;
+    }
+    else if(expr_label* l = dynamic_cast<expr_label*> (e.get()))
+    {
+        return {l->GetName(), 0l};
+    }
+    else if(e.get()->IsConst())
+        return {{}, e.get()->GetConst()};
+    return {};
 }

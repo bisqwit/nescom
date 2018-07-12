@@ -3,20 +3,17 @@
 
 /* xa65 object file loader and linker for C++
  * For loading and linking 65816 object files
- * Copyright (C) 1992,2016 Bisqwit (http://iki.fi/bisqwit/)
+ * Copyright (C) 1992,2018 Bisqwit (http://iki.fi/bisqwit/)
  *
- * Version 1.9.2 - Aug 18 2003, Sep 4 2003, Jan 23 2004,
- *                 Jan 31 2004, Feb 18 2005, Mar 27 2016
+ * Version 1.9.3 - Aug 18 2003, Sep 4 2003, Jan 23 2004,
+ *                 Jan 31 2004, Feb 18 2005, Mar 27 2016,
+ *                 Jun 27 2018, Jul 12 2018
  */
 
 #include <cstdio>
 #include <vector>
 #include <string>
 #include <utility>
-
-using std::FILE;
-using std::vector;
-using std::pair;
 
 /* An xa65 object file loader */
 
@@ -63,7 +60,7 @@ public:
     const O65& operator= (const O65 &);
 
     /*! Loads an object file from the specified file */
-    void Load(FILE *fp);
+    void Load(std::FILE *fp);
 
     /*! Relocate the given segment to new address */
     void Locate(SegmentSelection seg, unsigned newaddress);
@@ -87,8 +84,8 @@ public:
     void DeclareLongRelocation(SegmentSelection seg, const std::string& name, unsigned addr);
 
     /*! Returns the contents of a segment */
-    const vector<unsigned char>& GetSeg(SegmentSelection seg) const;
-    const vector<pair<unsigned char, std::string> >& GetCustomHeaders() const;
+    const std::vector<unsigned char>& GetSeg(SegmentSelection seg) const;
+    const std::vector<std::pair<unsigned char, std::string> >& GetCustomHeaders() const;
 
     /*! Returns the segment size */
     unsigned GetSegSize(SegmentSelection seg) const;
@@ -103,12 +100,12 @@ public:
     void Write(SegmentSelection seg, unsigned addr, unsigned char value);
 
     /*! Redefine a segment. Warning: Does not change symbols. */
-    void LoadSegFrom(SegmentSelection seg, const vector<unsigned char>& buf);
+    void LoadSegFrom(SegmentSelection seg, const std::vector<unsigned char>& buf);
 
     bool HasSym(SegmentSelection seg, const std::string& name) const;
 
-    const vector<std::string> GetSymbolList(SegmentSelection seg) const;
-    const vector<std::string> GetExternList() const;
+    const std::vector<std::string> GetSymbolList(SegmentSelection seg) const;
+    const std::vector<std::string> GetExternList() const;
 
     /*! Verifies that all symbols have been properly defined */
     void Verify() const;
@@ -126,7 +123,7 @@ private:
     class Defs;
     class Segment;
 
-    vector<pair<unsigned char, std::string> > customheaders;
+    std::vector<std::pair<unsigned char, std::string> > customheaders;
 
     Defs *defs;
     Segment *code, *data, *zero, *bss;

@@ -1,0 +1,57 @@
+.link page 0
+
+#define SOUND_BUFFER_SIZE 16
+
+.zero
+NumIssuedSounds  .byt 0
+.bss
+IssuedSoundsList .nop SOUND_BUFFER_SIZE
+DelayCounter     .byt 0
+
+.text
+
+RESET_GAME:
+	lda #2: jsr TimeDelay
+
+	; Set blue background
+	lda #$3F : sta $2006
+	lda #$00 : sta $2006
+	lda #$01 : sta $2007
+	
+	lda #$80 : sta $2000 ;enable nmi
+	lda #$F0 : sta $2001 ;enable ppu
+	
+	lda #3: jsr TimeDelay
+	lda #$FF : jsr IssueSound
+	
+	lda #1: jsr TimeDelay
+	lda #$FE : jsr IssueSound
+
+	lda #1: jsr TimeDelay
+	lda #8   : jsr IssueSound
+	
+	; A dummy loop, issue a Big Eye jumping sound every 3 seconds.
+
+-	lda #60*3 : jsr TimeDelay
+	lda #$29 : jsr IssueSound
+
+	jmp -
+
+
+IssueSound:
+	ldx NumIssuedSounds
+	cpx #SOUND_BUFFER_SIZE
+	beq +
+	 sta IssuedSoundsList,x
+	 inc NumIssuedSounds
+	+ rts
+
+TimeDelay:
+	sta DelayCounter
+	- jsr NextFrame : dec DelayCounter : bne -
+	rts
+NextFrame:
+	- lda $2002 : bpl -
+	- lda $2002 : bmi -
+	rts
+

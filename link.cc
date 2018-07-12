@@ -2,13 +2,14 @@
 #include <vector>
 #include <cstring>
 
-#include <unistd.h> // ftruncate
+#include <unistd.h> // For ftruncate
 
 using namespace std;
 
 #include "o65linker.hh"
 #include "msginsert.hh"
 #include "dataarea.hh"
+#include "romaddr.hh"
 #include "space.hh"
 
 #include "object.hh"
@@ -65,71 +66,71 @@ void MessageDone()
 
 void MessageModuleWithoutAddress(const string& name, const SegmentSelection seg)
 {
-    fprintf(stderr, "O65 linker: Module %s is still without address for seg %s\n",
+    std::fprintf(stderr, "O65 linker: Module %s is still without address for seg %s\n",
         name.c_str(), GetSegmentName(seg).c_str());
 }
 
 void MessageUndefinedSymbol(const string& name)
 {
-    fprintf(stderr, "O65 linker: Symbol '%s' still undefined\n", name.c_str());
+    std::fprintf(stderr, "O65 linker: Symbol '%s' still undefined\n", name.c_str());
 }
 
 void MessageDuplicateDefinition(const string& name, unsigned nmods, unsigned ndefs)
 {
-    fprintf(stderr, "O65 linker: Symbol '%s' defined in %u module(s) and %u global(s)\n",
+    std::fprintf(stderr, "O65 linker: Symbol '%s' defined in %u module(s) and %u global(s)\n",
         name.c_str(), nmods, ndefs);
 }
 
 void MessageUndefinedSymbols(unsigned n)
 {
-    fprintf(stderr, "O65 linker: Still %u undefined symbol(s)\n", n);
+    std::fprintf(stderr, "O65 linker: Still %u undefined symbol(s)\n", n);
 }
 
-static void LoadFreespaceSpecs(freespacemap& freespace)
-{
-    // Assume everything is free space!
-    /* FIXME: Make this configurable. */
-    
-    for(unsigned a=0; a<ROMmap_npages; ++a)
-    {
-        freespace.Add(a, 0x0000, GetPageSize());
-    }
-}
-        
 static void MapNESintoROM(DataArea& area, const Object& obj)
 {
     unsigned base = obj.GetSegmentBase();
     unsigned size = obj.GetSegmentSize();
-    
+
     //fprintf(stderr, "base=%u, size=%u\n", base,size);
-    
+    std::multimap<unsigned, std::pair<unsigned,unsigned>> blobs; //For sorting
     while(size > 0)
     {
-        unsigned base_begin = base - (base % GetPageSize());
-        unsigned base_end   = base_begin + GetPageSize();
-        
+        unsigned gran       = 0x2000;
+        unsigned base_begin = base - (base % gran);
+        unsigned base_end   = base_begin + gran;
+
         unsigned write_to    = NES2ROMaddr(base);
         unsigned write_count = size;
         if(base + write_count > base_end) write_count = base_end - base;
 
-        fprintf(stderr, "  base=$%X, remaining=$%X, write_to=$%X, write_count=$%X\n",
-            base, size, write_to, write_count);
-        
-        area.WriteLump(write_to,
-           obj.GetContent(base, write_count));
-        
+        blobs.emplace(write_to, std::pair<unsigned,unsigned>(base, write_count));
+
         base += write_count;
         size -= write_count;
     }
+    for(auto& b: blobs)
+    {
+        unsigned write_to    = b.first;
+        unsigned base        = b.second.first;
+        unsigned write_count = b.second.second;
+        auto lump = obj.GetContent(base, write_count);
+        if(std::any_of(lump.begin(), lump.end(), [&](unsigned n){return n!=0;}))
+        {
+            std::fprintf(stderr, "  base=$%X, size=$%X, write_to=$%X, write_count=$%X\n",
+                base, size, write_to, write_count);
+
+            area.WriteLump(write_to, lump);
+        }
+    }
 }
 
-static void FixupNES(const Object& obj, std::FILE* stream)
+static void FixupNES(Object& obj, std::FILE* stream)
 {
     bool Mirroring  = true;
     bool Mirroring2 = false;
     bool Trainer = false;
     bool Battery = false;
-    
+
     unsigned ROM_size  = ROMmap_npages;
     unsigned VROM_size = 0;
     unsigned ROM_type  = ((MapperNo & 0x0F) << 4)
@@ -138,7 +139,7 @@ static void FixupNES(const Object& obj, std::FILE* stream)
                         | (Trainer << 2)
                         | (Mirroring2 << 3);
     unsigned ROM_type2 = (MapperNo & 0xF0);
-    
+
     unsigned char NESheader[16] =
         {'N', 'E', 'S', 0x1A,
          (unsigned char)ROM_size,
@@ -152,16 +153,19 @@ static void FixupNES(const Object& obj, std::FILE* stream)
     fwrite(NESheader, 1, 16, stream);
 
     DataArea rom_obj;
+    obj.SelectTEXT();
+    MapNESintoROM(rom_obj, obj);
+    obj.SelectDATA();
     MapNESintoROM(rom_obj, obj);
 
     unsigned filesize = rom_obj.GetTop();
     unsigned RomSize = ROMmap_npages * GetPageSize();
     if(filesize < RomSize) filesize = RomSize;
     std::vector<unsigned char> ROMdata = rom_obj.GetContent(0, filesize);
-    
+
     fseek(stream, 16, SEEK_SET);
     fwrite(&ROMdata[0], 1, ROMdata.size(), stream);
-    
+
     ftruncate(fileno(stream), ROMdata.size()+16);
 }
 
@@ -172,12 +176,12 @@ static void Import(O65linker& linker, Object& obj, SegmentSelection seg)
     {
         const vector<unsigned char>& code = linker.GetSeg(seg, a);
         if(code.empty()) continue;
-        
+
         char Buf[64];
-        sprintf(Buf, "object_%u_%s", a+1, GetSegmentName(seg).c_str());
-        
+        std::sprintf(Buf, "object_%u_%s", a+1, GetSegmentName(seg).c_str());
+
         obj.DefineLabel(Buf, o65addrs[a]);
-        
+
         obj.SetPos(o65addrs[a]);
         obj.AddLump(code);
     }
@@ -186,7 +190,7 @@ static void Import(O65linker& linker, Object& obj, SegmentSelection seg)
 static void WriteOut(O65linker& linker, std::FILE* stream)
 {
     Object obj;
-    
+
     obj.StartScope();
      obj.SelectTEXT(); Import(linker, obj, CODE);
      obj.SelectDATA(); Import(linker, obj, DATA);
@@ -194,8 +198,8 @@ static void WriteOut(O65linker& linker, std::FILE* stream)
      obj.SelectBSS(); Import(linker, obj, BSS);
      obj.SelectTEXT();
     obj.EndScope();
-    
-    switch(format)   
+
+    switch(format)
     {
         case IPSformat:
             obj.WriteIPS(stream);
@@ -207,7 +211,7 @@ static void WriteOut(O65linker& linker, std::FILE* stream)
             obj.WriteRAW(stream, ROMmap_npages*GetPageSize());
             break;
         case NESformat:
-            obj.WriteRAW(NULL, ROMmap_npages*GetPageSize(), 16);
+            obj.WriteRAW(stream, ROMmap_npages*GetPageSize(), 16);
             FixupNES(obj, stream);
             break;
     }
@@ -239,19 +243,19 @@ int main(int argc, char** argv)
         {
             case 'V': // version
             {
-                printf(
+                std::printf(
                     "%s %s\n"
                     "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
-                    "This is free software; see the source for copying conditions. There is NO\n" 
+                    "This is free software; see the source for copying conditions. There is NO\n"
                     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n",
                     argv[0], VERSION
                       );
                 return 0;
             }
-            
+
             case 'h':
             {
-                std::printf(   
+                std::printf(
                     "O65 linker (tuned for NES)\n"
                     "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "\nUsage: %s [<option> [<...>]] <file> [<...>]\n"
@@ -299,7 +303,7 @@ int main(int argc, char** argv)
                 unsigned outsize = strtol(optarg, 0, 10);
                 if(outsize % GetPageSize())
                 {
-                    fprintf(stderr, "Warning: The given ROMsize (%u, 0x%X) is not a multiple of 0x%X.\n"
+                    std::fprintf(stderr, "Warning: The given ROMsize (%u, 0x%X) is not a multiple of 0x%X.\n"
                         "         Using %u (0x%X) instead.\n",
                         outsize, outsize,
                         GetPageSize(),
@@ -307,9 +311,9 @@ int main(int argc, char** argv)
                         (outsize / GetPageSize())*GetPageSize()
                        );
                 }
-                
+
                 ROMmap_npages = outsize / GetPageSize();
-                fprintf(stderr, "%u pages.\n", ROMmap_npages);
+                std::fprintf(stderr, "%u pages.\n", ROMmap_npages);
                 break;
             }
         }
@@ -320,31 +324,31 @@ int main(int argc, char** argv)
 
     if(files.empty())
     {
-        fprintf(stderr, "Error: Link what? See %s --help\n", argv[0]);
+        std::fprintf(stderr, "Error: Link what? See %s --help\n", argv[0]);
     ErrorExit:
         if(output)
         {
-            fclose(output);
-            remove(outfn.c_str());
+            std::fclose(output);
+            std::remove(outfn.c_str());
         }
         return -1;
     }
-    
-    
+
+
     O65linker linker;
-    
-    for(unsigned a=0; a<files.size(); ++a)
+
+    for(std::size_t a=0; a<files.size(); ++a)
     {
         char Buf[5];
-        FILE *fp = fopen(files[a].c_str(), "rb");
+        FILE *fp = std::fopen(files[a].c_str(), "rb");
         if(!fp)
         {
-            perror(files[a].c_str());
+            std::perror(files[a].c_str());
             continue;
         }
-        
-        fread(Buf, 1, 5, fp);
-        if(!strncmp(Buf, "PATCH", 5))
+
+        std::fread(Buf, 1, 5, fp);
+        if(!std::strncmp(Buf, "PATCH", 5))
         {
             linker.LoadIPSfile(fp, files[a]);
         }
@@ -352,12 +356,12 @@ int main(int argc, char** argv)
         {
             O65 tmp;
             tmp.Load(fp);
-            
+
             const vector<pair<unsigned char, string> >&
                 customheaders = tmp.GetCustomHeaders();
-            
-            LinkageWish Linkage;
-            
+
+            std::map<SegmentSelection,LinkageWish> Linkage;
+
             for(unsigned b=0; b<customheaders.size(); ++b)
             {
                 unsigned char type = customheaders[b].first;
@@ -369,25 +373,30 @@ int main(int argc, char** argv)
                         unsigned param = 0;
                         if(data.size() >= 5)
                         {
-                            param = (data[1] & 0xFF) 
+                            param = (data[1] & 0xFF)
                                   | ((data[2] & 0xFF) << 8)
                                   | ((data[3] & 0xFF) << 16)
                                   | ((data[4] & 0xFF) << 24);
                         }
-                        switch(data[0])
+                        unsigned seg = data[0] / 8, mode = data[0] & 7;
+                        switch(mode)
                         {
                             case 0:
-                                Linkage = LinkageWish();
+                                Linkage[SegmentSelection(seg)] = LinkageWish();
                                 break;
                             case 1:
-                                Linkage.SetLinkageGroup(param);
-                                fprintf(stderr, "%s will be linked in group %u\n",
-                                    files[a].c_str(), param);
+                                Linkage[SegmentSelection(seg)].SetLinkageGroup(param);
+                                std::fprintf(stderr, "%s of %s will be linked in group %u\n",
+                                     GetSegmentName(SegmentSelection(seg)).c_str(),
+                                     files[a].c_str(), param);
                                 break;
                             case 2:
-                                Linkage.SetLinkagePage(param);
-                                fprintf(stderr, "%s will be linked to page $%02X\n",
-                                    files[a].c_str(), param);
+                                unsigned addr = ROM2NESaddr(param*GetPageSize());
+                                param = addr/GetPageSize();
+                                Linkage[SegmentSelection(seg)].SetLinkagePage(param);
+                                std::fprintf(stderr, "%s of %s will be linked in page starting at address $%05X\n",
+                                    GetSegmentName(SegmentSelection(seg)).c_str(),
+                                    files[a].c_str(), param*GetPageSize());
                                 break;
                         }
                         break;
@@ -400,44 +409,60 @@ int main(int argc, char** argv)
                         break;
                 }
             }
-            
+
             linker.AddObject(tmp, files[a], Linkage);
         }
-        fclose(fp);
+        std::fclose(fp);
     }
-    
+
     freespacemap freespace_code;
-    LoadFreespaceSpecs(freespace_code);
-    /* Organize the code blobs */    
+    // Assume everything is free space!
+    /* FIXME: Make this configurable. */
+
+    for(unsigned a=0; a<ROMmap_npages; ++a)
+    {
+        unsigned addr = ROM2NESaddr(a*GetPageSize());
+        freespace_code.Add(addr/GetPageSize(), addr%GetPageSize(), GetPageSize());
+    }
+    for(unsigned a=0; a<ROMmap_npages; ++a)
+    {
+        unsigned addr = ROM2NESaddr(a*GetPageSize());
+        freespace_code.DumpPageMap(addr/GetPageSize());
+    }
+
+    /* Organize the code blobs */
     freespace_code.OrganizeO65linker(linker, CODE);
-    
-    /* ZERO, DATA, BSS all refer to the RAM. */
-    
+    freespace_code.OrganizeO65linker(linker, DATA);
+
+    for(unsigned a=0; a<ROMmap_npages; ++a)
+    {
+        unsigned addr = ROM2NESaddr(a*GetPageSize());
+        freespace_code.DumpPageMap(addr/GetPageSize());
+    }
+
+    /* ZERO & BSS all refer to the RAM. */
+
     freespacemap freespace_data;
-    
+
     /* First link the zeropage. It may only use 8-bit addresses. */
-    
-    freespace_data.Add(0x0000, 0x100);
+    freespace_data.Add(0x00, 0x0000, 0x100);
     freespace_data.OrganizeO65linker(linker, ZERO);
-    //freespace_data.DumpPageMap(0);
-    
+
     /* 0x100..0x1FF is stack. Don't mark it as free space. */
-    
-    /* Then link data and bss. They are interchangeable.
+
+    /* Then link BSS.
      * If 8-bit addresses remained free from the zeropage segment,
      * they may be used for data addresses.
      */
-    
-    freespace_data.Add(0x0200, 0x800 - 0x200);
-    freespace_data.OrganizeO65linker(linker, DATA);
-    //freespace_data.DumpPageMap(0);
+
+    freespace_data.Add(0x00, 0x0200, 0x800 - 0x200);
     freespace_data.OrganizeO65linker(linker, BSS);
-    //freespace_data.DumpPageMap(0);
-    
+    freespace_data.DumpPageMap(0);
+
     linker.Link();
-    
+
     WriteOut(linker, output ? output : stdout);
-    if(output) fclose(output);
-    
+    if(output) std::fclose(output);
+
     return 0;
 }

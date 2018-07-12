@@ -33,26 +33,10 @@ public:
     unsigned GetAddr() const { return ROM2NESaddr(from_addr); }
     unsigned GetSize() const { return num_bytes; }
 };
-struct CallFrom: public ReferMethod
-{
-    // JSL to specific location.
-    CallFrom(unsigned from): ReferMethod(0x00000022,4,-8, from) {}
-    // Formula: (value << 8) | 0xC0000022, 4 bytes
-};
-struct LongPtrFrom: public ReferMethod
-{
-    LongPtrFrom(unsigned from): ReferMethod(0x000000,3,0, from) {}
-    // Formula: (value | 0xC00000), 3 bytes
-};
 struct OffsPtrFrom: public ReferMethod
 {
     OffsPtrFrom(unsigned from): ReferMethod(0,2,0, from) {}
     // Formula: (value), 2 bytes
-};
-struct PagePtrFrom: public ReferMethod
-{
-    PagePtrFrom(unsigned from): ReferMethod(0x00,1,16, from) {}
-    // Formula: (value >> 16) | 0xC0, 1 byte
 };
 
 #endif

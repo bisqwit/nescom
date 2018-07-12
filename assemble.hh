@@ -13,10 +13,9 @@ namespace
         FORCE_ABSWORD = '!',
         FORCE_LONG    = '@',
         FORCE_SEGBYTE = '^',
-        FORCE_REL8    = 1,
-        FORCE_REL16   = 2
+        FORCE_REL8    = 1
     };
-    
+
     enum
     {
         prio_addsub = 1, // + -
@@ -29,9 +28,6 @@ namespace
         prio_bitnot = 8  // ~
     };
 }
-
-extern bool A_16bit;
-extern bool X_16bit;
 
 const std::string& GetPrevBranchLabel(unsigned length); // What "-" means for each length of "-"
 const std::string& GetNextBranchLabel(unsigned length); // What "+" means for each length of "+"
