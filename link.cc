@@ -445,7 +445,11 @@ int main(int argc, char** argv)
     freespacemap freespace_data;
 
     /* First link the zeropage. It may only use 8-bit addresses. */
+    bool add_mirrors = true;
     freespace_data.Add(0x00, 0x0000, 0x100);
+    if(add_mirrors)
+        for(unsigned mirror=1; mirror<4; ++mirror)
+            freespace_data.AddAlias(0x00, mirror*0x800+0x0000, 0x100, 0x00,0x0000);
     freespace_data.OrganizeO65linker(linker, ZERO);
 
     /* 0x100..0x1FF is stack. Don't mark it as free space. */
@@ -456,6 +460,9 @@ int main(int argc, char** argv)
      */
 
     freespace_data.Add(0x00, 0x0200, 0x800 - 0x200);
+    if(add_mirrors)
+        for(unsigned mirror=1; mirror<4; ++mirror)
+            freespace_data.AddAlias(0x00, mirror*0x800+0x0200, 0x800-0x200, 0x00,0x0200);
     freespace_data.OrganizeO65linker(linker, BSS);
     freespace_data.DumpPageMap(0);
 

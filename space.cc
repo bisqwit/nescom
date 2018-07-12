@@ -687,8 +687,8 @@ void freespacemap::OrganizeO65linker
     }
 
     /* Everything done. */
-    for(unsigned n=0; n<sizes.size(); ++n)
-        std::fprintf(stderr, "Size %04X address = %04X\n", sizes[n], addrs[n]);
+    //for(unsigned n=0; n<sizes.size(); ++n)
+    //    std::fprintf(stderr, "Size %04X address = %04X\n", sizes[n], addrs[n]);
 
     objects.PutAddrList(addrs, seg);
 }
