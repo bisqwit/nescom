@@ -40,11 +40,14 @@
 	 *
 	 * The last integer can be used to give knowledge about the current state of the memory
 	 * mapper when this code is executed or these pointers are interpreted.
-	 * The number is integerpreted as follows:
+	 * If the number is integer, it is interpreted as follows:
 	 *   $8000 is pointed to N * $4000 + $0000
 	 *   $A000 is pointed to N * $4000 + $2000
 	 *   $C000 is not affected from the default guess
 	 *   $E000 is not affected from the default guess
+	 * Alternative, it can be used to convey mapping for all for pages simultanously
+	 * in hexadecimal format (example: $00_1D_1E_1F puts offse 0*$2000 at $8000,
+	 * offset $1D*$2000 at $A000, offset $1E*$2000 at $C000 and offset $1F*$2000 at $E000).
 	 *
 	 * Example: CertainlyCode $1F36F NMIhandler4_LoadingCrossroad 0 $3
 	 *          When this code is disassembled, NES address space $8000-$BFFF

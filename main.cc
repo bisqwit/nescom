@@ -1,7 +1,8 @@
 #include <cstdio>
 #include <vector>
 #include <string>
-#include <unistd.h> // unlink
+
+#include <unistd.h> // For unlink
 
 #include "assemble.hh"
 #include "precompile.hh"
@@ -37,7 +38,7 @@ int main(int argc, char**argv)
 {
     bool assemble = true;
     std::vector<std::string> files;
-    
+
     std::FILE *output = NULL;
     std::string outfn;
 
@@ -51,6 +52,7 @@ int main(int argc, char**argv)
             {"output",   0,0,'o'},
             {"preprocess",0,0,'E'},
             {"compile",   0,0,'c'},
+            {"jumps",     0,0,'J'},
             {"submethod", 0,0,501},
             {"outformat", 0,0,'f'},
             {"out_ips",   0,0,'I'},
@@ -62,14 +64,19 @@ int main(int argc, char**argv)
         switch(c)
         {
             case 'V': //version
-                printf(
+                std::printf(
                     "%s %s\n"
-                    "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
+                    "Copyright (C) 1992,2018 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "This is free software; see the source for copying conditions. There is NO\n"
                     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n",
                     argv[0], VERSION
                       );
                 return 0;
+            case 'J':
+            {
+                fix_jumps = true;
+                break;
+            }
             case 501: //submethod
             {
                 const std::string method = optarg;
@@ -87,13 +94,13 @@ int main(int argc, char**argv)
                 }
                 break;
             }
-            
+
             case 'I': SetOutputFormat("ips"); break;
-            
+
             case 'h':
                 std::printf(
                     "6502 assembler\n"
-                    "Copyright (C) 1992,2006 Bisqwit (http://iki.fi/bisqwit/)\n"
+                    "Copyright (C) 1992,2018 Bisqwit (http://iki.fi/bisqwit/)\n"
                     "\nUsage: %s [<option> [<...>]] <file> [<...>]\n"
                     "\nAssembles 6502 code.\n"
                     "\nOptions:\n"
@@ -102,6 +109,7 @@ int main(int argc, char**argv)
                     " -o <file>             Places the output into <file>\n"
                     " -E                    Preprocess only\n"
                     " -c                    Ignored for gcc-compatibility\n"
+                    " --jumps, -J           Automatically correct short jumps\n"
                     " --version             Displays version information\n"
                     " --submethod <method>  Select subprocess method: temp,thread,pipe\n"
                     " -f, --outformat <fmt> Select output format: ips,raw,o65 (default: o65)\n"
@@ -145,24 +153,24 @@ int main(int argc, char**argv)
                 goto ErrorExit;
         }
     }
-    
+
     while(optind < argc)
         files.push_back(argv[optind++]);
 
     if(files.empty())
     {
-        fprintf(stderr, "Error: Assemble what? See %s --help\n", argv[0]);
+        std::fprintf(stderr, "Error: Assemble what? See %s --help\n", argv[0]);
     ErrorExit:
         if(output)
         {
-            fclose(output);
-            remove(outfn.c_str());
+            std::fclose(output);
+            std::remove(outfn.c_str());
         }
         return -1;
     }
-    
+
     Object obj;
-    
+
     /*
      *   TODO:
      *        - Read input
@@ -173,18 +181,18 @@ int main(int argc, char**argv)
      *        - Verbose errors
      *        - Verbose errors
      */
-    
+
 Reprocess:
     obj.ClearMost();
-    
+
     for(unsigned a=0; a<files.size(); ++a)
     {
         std::FILE *fp = NULL;
-        
+
         const std::string& filename = files[a];
         if(filename != "-" && !filename.empty())
         {
-            fp = fopen(filename.c_str(), "rt");
+            fp = std::fopen(filename.c_str(), "rt");
             if(!fp)
             {
                 std::perror(filename.c_str());
@@ -193,23 +201,40 @@ Reprocess:
         }
         else
         {
+            if(fix_jumps)
+            {
+                std::fprintf(stderr, "Error: --jumps can't be used with stdin-input!\n");
+                assembly_errors=true;
+            }
         }
-    
+
         if(assemble)
             PrecompileAndAssemble(fp ? fp : stdin, obj);
         else
             Precompile(fp ? fp : stdin, output ? output : stdout);
-        
+
         if(fp)
             std::fclose(fp);
     }
-    
+
     if(assemble && !assembly_errors)
     {
         obj.CloseSegments();
-        
+
+        if(obj.NeedsFlipping())
+        {
+            if(already_reprocessed)
+            {
+                std::fprintf(stderr, "Error: Three-pass jump fixing not supported, sorry\n");
+                assembly_errors = true;
+                goto ErrorExit;
+            }
+            already_reprocessed = true;
+            goto Reprocess;
+        }
+
         std::FILE* stream = output ? output : stdout;
-        
+
         switch(format)
         {
             case IPSformat:
@@ -224,13 +249,13 @@ Reprocess:
         }
         obj.Dump();
     }
-    
-    if(output) fclose(output);
-    
+
+    if(output) std::fclose(output);
+
     if(assembly_errors && !outfn.empty())
     {
         unlink(outfn.c_str());
     }
-    
+
     return assembly_errors ? 1 : 0;
 }

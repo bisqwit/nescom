@@ -1,0 +1,11 @@
+*= $FFF8
+SystemTable:
+	nop
+	nop
+	.word NMI
+	.word RESET
+	.word IRQ
+
+*= $C000
+; This is required on some systems for this Memory Controller for some reason.
+.byt 0,1,2,3

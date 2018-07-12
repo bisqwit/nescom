@@ -24,12 +24,14 @@ LD=$(CXX)
 
 DEPDIRS =
 
-OPTIM=-Ofast -std=c++14
-# -fsanitize=address
+CXX += -std=c++1z
+
+OPTIM = -Ofast
+#OPTIM = -Og -fsanitize=address
 
 CPPFLAGS += -I.
 
-VERSION=1.1.8.1
+VERSION=1.2.0
 
 ARCHFILES=COPYING Makefile.sets progdesc.php \
           assemble.cc assemble.hh \
@@ -56,6 +58,13 @@ ARCHFILES=COPYING Makefile.sets progdesc.php \
           logfiles.hh \
           rangeset.hh rangeset.tcc range.hh range.tcc \
           miscfun.hh miscfun.tcc \
+          \
+        demo/header.a65 \
+        demo/main.a65 \
+        demo/index.php \
+        demo/music.a65 \
+        demo/system.a65 \
+        demo/Makefile \
           \
 	clever/akuden.ini \
 	clever/arkanoid.ini \
@@ -91,7 +100,7 @@ PROGS=nescom disasm clever-disasm neslink
 INSTALLPROGS=nescom neslink nescom-disasm
 INSTALL=install
 
-all: $(PROGS)
+all: $(PROGS) nescom-disasm
 
 nescom: \
 		assemble.o insdata.o object.o \

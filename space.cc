@@ -5,8 +5,6 @@
 #include "binpacker.hh"
 #include "romaddr.hh"
 
-using namespace std;
-
 freespacemap::freespacemap() : quiet(false)
 {
 }
@@ -15,33 +13,31 @@ unsigned freespacemap::Find(unsigned page, unsigned length)
 {
     FILE *log = GetLogFile("mem", "log_addrs");
 
-    iterator mapi = find(page);
-    if(mapi == end())
+    auto mapi = data.find(page);
+    if(mapi == data.end())
     {
         if(!quiet)
         {
-            fprintf(stderr,
+            std::fprintf(stderr,
                 "Page %02X is FULL! No %u bytes of free space there!\n",
                 page, length);
             if(log)
-            fprintf(log,
+            std::fprintf(log,
                 "Page %02X is FULL! No %u bytes of free space there!\n",
                 page, length);
         }
         return NOWHERE;
     }
     freespaceset &spaceset = mapi->second;
-    
 
     unsigned bestscore = 0;
     unsigned bestpos   = NOWHERE;
-    
-    for(freespaceset::const_iterator
-        reci = spaceset.begin(); reci != spaceset.end(); ++reci)
+
+    for(auto reci = spaceset.begin(); reci != spaceset.end(); ++reci)
     {
         const unsigned recpos = reci->lower;
         const unsigned reclen = reci->upper - recpos;
-        
+
         if(reclen == length)
         {
             bestpos = recpos;
@@ -53,10 +49,10 @@ unsigned freespacemap::Find(unsigned page, unsigned length)
             // Too small, not good.
             continue;
         }
-        
+
         // The smaller, the better.
         unsigned score = 0x7FFFFFF - reclen;
-        
+
         if(score > bestscore)
         {
             bestscore = score;
@@ -69,49 +65,49 @@ unsigned freespacemap::Find(unsigned page, unsigned length)
         if(!quiet)
         {
             unsigned size = Size(page);
-            fprintf(stderr,
+            std::fprintf(stderr,
                 "Can't find %u bytes of free space in page %02X! (Total left: %u)\n",
                 length, page, size);
             if(log)
-            fprintf(log,
+            std::fprintf(log,
                 "Can't find %u bytes of free space in page %02X! (Total left: %u)\n",
                 length, page, size);
         }
         return NOWHERE;
     }
-    
+
     spaceset.erase(bestpos, bestpos+length);
-    
+
     return bestpos;
 }
 
 void freespacemap::DumpPageMap(unsigned pagenum) const
 {
-    const_iterator mapi = find(pagenum);
-    if(mapi == end())
+    auto mapi = data.find(pagenum);
+    if(mapi == data.end())
     {
-        fprintf(stderr, "(Page %02X full)\n", pagenum);
+        std::fprintf(stderr, "(Page %02X full)\n", pagenum);
         return;
     }
 
     const freespaceset &spaceset = mapi->second;
-    
-    fprintf(stderr, "Map of page %02X:\n", pagenum);
-    for(freespaceset::const_iterator
-        reci = spaceset.begin(); reci != spaceset.end(); ++reci)
+
+    std::fprintf(stderr, "Map of page $%02X:\n", pagenum);
+    for(auto reci = spaceset.begin(); reci != spaceset.end(); ++reci)
     {
         unsigned recpos = reci->lower;
         unsigned reclen = reci->upper - recpos;
-        fprintf(stderr, "  %X: %u\n", recpos, reclen);
+        std::fprintf(stderr, "  $%X: %u\n", recpos, reclen);
     }
 }
 
 void freespacemap::VerboseDump() const
 {
+    /**/
     FILE *log = GetLogFile("mem", "log_addrs");
     if(!log) return; //log = stdout;
 
-    for(const_iterator i = begin(); i != end(); ++i)
+    for(auto i = data.begin(); i != data.end(); ++i)
     {
         unsigned page = i->first;
         const freespaceset &spaceset = i->second;
@@ -120,23 +116,23 @@ void freespacemap::VerboseDump() const
         {
             unsigned recpos = reci->lower;
             unsigned reclen = reci->upper - recpos;
-            
+
             unsigned pos = page * GetPageSize() + recpos;
-            
+
             //MarkFree(pos, reclen, "free");
         }
     }
+    /**/
 }
 
 void freespacemap::Report() const
 {
-    fprintf(stderr, "Free space:");
-    const_iterator i;
+    std::fprintf(stderr, "Free space:");
     unsigned total=0;
-    for(i=begin(); i!=end(); ++i)
+    for(auto i=data.begin(); i!=data.end(); ++i)
     {
         unsigned thisfree = 0, hunkcount = 0;
-        for(freespaceset::const_iterator j=i->second.begin(); j!=i->second.end(); ++j)
+        for(auto j = i->second.begin(); j != i->second.end(); ++j)
         {
             thisfree += j->length();
             ++hunkcount;
@@ -144,20 +140,19 @@ void freespacemap::Report() const
         total += thisfree;
         if(thisfree)
         {
-            fprintf(stderr, " %02X:%u/%u", i->first, thisfree, hunkcount);
+            std::fprintf(stderr, " %02X:%u/%u", i->first, thisfree, hunkcount);
         }
     }
-    fprintf(stderr, " - total: %u bytes\n", total);
+    std::fprintf(stderr, " - total: %u bytes\n", total);
 }
 
 unsigned freespacemap::Size() const
 {
-    const_iterator i;
     unsigned total=0;
-    for(i=begin(); i!=end(); ++i)
+    for(auto i = data.begin(); i != data.end(); ++i)
     {
         unsigned thisfree = 0;
-        for(freespaceset::const_iterator j=i->second.begin(); j!=i->second.end(); ++j)
+        for(auto j = i->second.begin(); j != i->second.end(); ++j)
         {
             thisfree += j->length();
         }
@@ -168,11 +163,10 @@ unsigned freespacemap::Size() const
 
 unsigned freespacemap::Size(unsigned page) const
 {
-    const_iterator i = find(page);
     unsigned total=0;
-    if(i != end())
+    if(auto i = data.find(page); i != data.end())
     {
-        for(freespaceset::const_iterator j=i->second.begin(); j!=i->second.end(); ++j)
+        for(auto j = i->second.begin(); j != i->second.end(); ++j)
         {
             total += j->length();
         }
@@ -182,35 +176,33 @@ unsigned freespacemap::Size(unsigned page) const
 
 unsigned freespacemap::GetFragmentation(unsigned page) const
 {
-    const_iterator i = find(page);
-    if(i != end()) return i->second.size();
+    if(auto i = data.find(page); i != data.end()) return i->second.size();
     return 0;
 }
 
-const set<unsigned> freespacemap::GetPageList() const
+const std::set<unsigned> freespacemap::GetPageList() const
 {
-    set<unsigned> result;
-    for(const_iterator i = begin(); i != end(); ++i)
-        result.insert(i->first);
+    std::set<unsigned> result;
+    for(auto i = data.begin(); i != data.end(); ++i) result.insert(i->first);
     return result;
 }
 const freespaceset &freespacemap::GetList(unsigned pagenum) const
 {
-    return find(pagenum)->second;
+    return data.find(pagenum)->second;
 }
 
 void freespacemap::Add(unsigned page, unsigned begin, unsigned length)
 {
-    fprintf(stderr, "Adding %u bytes of free space at %02X:%04X\n", length, page, begin);
+    //std::fprintf(stderr, "Adding %u bytes of free space at %02X:%04X\n", length, page, begin);
     if(begin + length > GetPageSize())
     {
-        fprintf(stderr,
+        std::fprintf(stderr,
             "freespacemap::Add: Error in Add($%02X,$%X, %u): Page is greater than %u bytes!\n",
             page,begin,length, GetPageSize());
     }
-    
-    operator[] (page).set(begin, begin+length);
-    //operator[] (page).compact();
+
+    data[page].set(begin, begin+length);
+    //data[page].compact();
 }
 void freespacemap::Add(unsigned longaddr, unsigned length)
 {
@@ -219,25 +211,56 @@ void freespacemap::Add(unsigned longaddr, unsigned length)
 
 void freespacemap::Del(unsigned page, unsigned begin, unsigned length)
 {
-    //fprintf(stderr, "Deleting %u bytes of free space at %02X:%04X\n", length, page, begin);
+    //std::fprintf(stderr, "Deleting %u bytes of free space at %02X:%04X\n", length, page, begin);
     if(begin + length > GetPageSize())
     {
-        fprintf(stderr,
+        std::fprintf(stderr,
             "freespacemap::Del: Error in Del($%02X,$%X, %u): Page is greater than %u bytes!\n",
             page,begin,length, GetPageSize());
     }
-    
-    iterator i = find(page);
-    if(i == end()) return;
-    
-    freespaceset &spaceset = i->second;
-    
-    spaceset.erase(begin, begin+length);
-    //spaceset.compact();
+
+    unsigned end = begin+length;
+    if(auto i = data.find(page); i == data.end())
+        return;
+    else
+    {
+        freespaceset &spaceset = i->second;
+        spaceset.erase(begin, end);
+        //spaceset.compact();
+    }
+
+    /* Run through aliases */
+    if(auto i = aliases.find(page); i != aliases.end())
+        for(const auto& j: i->second)
+        {
+            unsigned alias_begin = j.first;
+            unsigned alias_end   = alias_begin + j.second.length;
+            if(alias_begin < end && alias_end > begin)
+            {
+                unsigned real_bank  = j.second.realpage;
+                unsigned real_begin = j.second.realbegin;
+                if(auto k = data.find(real_bank); k != data.end())
+                {
+                    freespaceset &spaceset = k->second;
+
+                    unsigned delete_begin  = std::max(begin, alias_begin);
+                    unsigned delete_end    = std::min(end,   alias_end);
+                    unsigned delete_amount = delete_end - delete_begin;
+                    unsigned skip_begin    = delete_begin - alias_begin;
+                    spaceset.erase(real_begin + skip_begin, real_begin + skip_begin + delete_amount);
+                }
+            }
+        }
 }
 void freespacemap::Del(unsigned longaddr, unsigned length)
 {
     Del(longaddr / GetPageSize(), longaddr % GetPageSize(), length);
+}
+
+void freespacemap::AddAlias(unsigned aliaspage, unsigned aliasbegin, unsigned aliaslength,
+                            unsigned realpage, unsigned realbegin)
+{
+    aliases[aliaspage][aliasbegin] = alias{aliaslength,realpage,realbegin};
 }
 
 void freespacemap::Compact()
@@ -246,37 +269,65 @@ void freespacemap::Compact()
         i->second.compact();*/
 }
 
-bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
+freespaceset freespacemap::CalculateMapOf(unsigned pagenum) const
+{
+    freespaceset pagemap;
+    if(auto i = data.find(pagenum); i != data.end())
+    {
+        pagemap = i->second;
+    }
+    if(auto i = aliases.find(pagenum); i != aliases.end())
+        for(const auto& j: i->second)
+        {
+            const auto& a = j.second;
+            if(auto k = data.find(a.realpage); k != data.end())
+            {
+                // Find all space within {realbegin, realbegin+length}
+                // and insert that into pagemap.
+                freespaceset submap = k->second;
+                submap.erase_before( a.realbegin );
+                submap.erase_after( a.realbegin + a.length );
+                for(auto l = submap.begin(); l != submap.end(); ++l)
+                {
+                    unsigned length = l->upper - l->lower;
+                    unsigned base   = l->lower - a.realbegin + j.first;
+                    pagemap.set(base, base+length);
+                }
+            }
+        }
+    return pagemap;
+}
+
+bool freespacemap::Organize(std::vector<freespacerec> &blocks, unsigned pagenum)
 {
     FILE *log = GetLogFile("mem", "log_addrs");
 
-    const_iterator i = find(pagenum);
-    if(i == end())
+    freespaceset pagemap = CalculateMapOf(pagenum);
+
+    if(pagemap.empty())
     {
         if(!quiet)
         {
-            fprintf(stderr, "ERROR: Page %02X is totally empty.\n", pagenum);
+            std::fprintf(stderr, "ERROR: Page %02X is totally empty.\n", pagenum);
             if(log)
-            fprintf(log, "ERROR: Page %02X is totally empty.\n", pagenum);
+            std::fprintf(log, "ERROR: Page %02X is totally empty.\n", pagenum);
         }
         return true;
     }
-    
-    const freespaceset &pagemap = i->second;
-    
-    vector<unsigned> items;
-    vector<unsigned> holes;
-    vector<unsigned> holeaddrs;
-    
+
+    std::vector<unsigned> items;
+    std::vector<unsigned> holes;
+    std::vector<unsigned> holeaddrs;
+
     items.reserve(blocks.size());
-    
+
     unsigned totalsize = 0;
     for(unsigned a=0; a<blocks.size(); ++a)
     {
         totalsize += blocks[a].len;
         items.push_back(blocks[a].len);
     }
-    
+
     unsigned totalspace = 0;
     holes.reserve(pagemap.size());
     holeaddrs.reserve(pagemap.size());
@@ -288,27 +339,27 @@ bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
         holes.push_back(reclen);
         holeaddrs.push_back(recpos);
     }
-    
+
     if(totalspace < totalsize)
     {
         if(!quiet)
         {
-            fprintf(stderr, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
+            std::fprintf(stderr, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
                 pagenum, totalsize, totalspace);
             if(log)
-            fprintf(log, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
+            std::fprintf(log, "ERROR: Page %02X doesn't have %u bytes of space (only %u there)!\n",
                 pagenum, totalsize, totalspace);
         }
     }
-    
-    vector<unsigned> organization = PackBins(holes, items);
-    
+
+    std::vector<unsigned> organization = PackBins(holes, items);
+
     bool Errors = false;
     for(unsigned a=0; a<blocks.size(); ++a)
     {
         unsigned itemsize = blocks[a].len;
         unsigned holeid   = organization[a];
-        
+
         unsigned spaceptr = NOWHERE;
         if(holeid < holes.size()
         && holes[holeid] >= itemsize)
@@ -327,24 +378,24 @@ bool freespacemap::Organize(vector<freespacerec> &blocks, unsigned pagenum)
     if(Errors)
         if(!quiet)
         {
-            fprintf(stderr, "ERROR: Organization to page %02X failed\n", pagenum);
+            std::fprintf(stderr, "ERROR: Organization to page %02X failed\n", pagenum);
             if(log)
-            fprintf(log, "ERROR: Organization to page %02X failed\n", pagenum);
+            std::fprintf(log, "ERROR: Organization to page %02X failed\n", pagenum);
         }
     return Errors;
 }
 
-bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
+bool freespacemap::OrganizeToAnyPage(std::vector<freespacerec> &blocks)
 {
     FILE *log = GetLogFile("mem", "log_addrs");
 
-    vector<unsigned> items;
-    vector<unsigned> holes;
-    vector<unsigned> holepages;
-    vector<unsigned> holeaddrs;
-    
+    std::vector<unsigned> items;
+    std::vector<unsigned> holes;
+    std::vector<unsigned> holepages;
+    std::vector<unsigned> holeaddrs;
+
     items.reserve(blocks.size());
-    
+
     unsigned totalsize = 0;
     for(unsigned a=0; a<blocks.size(); ++a)
     {
@@ -352,96 +403,110 @@ bool freespacemap::OrganizeToAnyPage(vector<freespacerec> &blocks)
         items.push_back(blocks[a].len);
     }
 
-    unsigned totalspace = 0;
-    for(const_iterator i=begin(); i!=end(); ++i)
-    {
-        unsigned pagenum = i->first;
-        const freespaceset &pagemap = i->second;
-        for(freespaceset::const_iterator j=pagemap.begin(); j!=pagemap.end(); ++j)
-        {
-            const unsigned recpos = j->lower;
-            const unsigned reclen = j->upper - recpos;
-            totalspace += reclen;
-            holes.push_back(reclen);
-            holeaddrs.push_back(recpos);
-            holepages.push_back(pagenum);
-        }
-    }
-    
-    if(totalspace < totalsize)
-    {
-        if(!quiet)
-        {
-            fprintf(stderr, "ERROR: No %u bytes of space available (only %u there)!\n",
-                totalsize, totalspace);
-            if(log)
-            fprintf(log, "ERROR: No %u bytes of space available (only %u there)!\n",
-                totalsize, totalspace);
-        }
-    }
-    
-    vector<unsigned> organization = PackBins(holes, items);
-    
+    // Try twice. First without aliases, then with aliases
+    std::set<unsigned> pages;
+    for(const auto& d: data) pages.insert(d.first);
+
     bool Errors = false;
-    for(unsigned a=0; a<blocks.size(); ++a)
+    for(unsigned try_number = 1; try_number <= 2; ++try_number)
     {
-        unsigned itemsize = blocks[a].len;
-        unsigned holeid   = organization[a];
-        
-        unsigned spaceptr = NOWHERE;
-        if(holes[holeid] >= itemsize)
+        unsigned totalspace = 0;
+        if(try_number == 2)
         {
-            unsigned pagenum = holepages[holeid];
-            spaceptr = holeaddrs[holeid] + (pagenum * GetPageSize());
-            holeaddrs[holeid] += itemsize;
-            holes[holeid]     -= itemsize;
-            Del(spaceptr, itemsize);
+            for(const auto& d: aliases) pages.insert(d.first);
         }
-        else
+        for(unsigned pagenum: pages)
         {
-            Errors = true;
+            freespaceset pagemap = CalculateMapOf(pagenum);
+            for(auto j = pagemap.begin(); j != pagemap.end(); ++j)
+            {
+                const unsigned recpos = j->lower;
+                const unsigned reclen = j->upper - recpos;
+                totalspace += reclen;
+                holes.push_back(reclen);
+                holeaddrs.push_back(recpos);
+                holepages.push_back(pagenum);
+            }
         }
-        blocks[a].pos = spaceptr;
+
+        if(totalspace < totalsize)
+        {
+            if(!quiet)
+            {
+                std::fprintf(stderr, "ERROR: No %u bytes of space available (only %u there)!\n",
+                    totalsize, totalspace);
+                if(log)
+                std::fprintf(log, "ERROR: No %u bytes of space available (only %u there)!\n",
+                    totalsize, totalspace);
+            }
+            if(try_number == 1)
+                continue;
+        }
+
+        std::vector<unsigned> organization = PackBins(holes, items);
+
+        Errors = false;
+        for(unsigned a=0; a<blocks.size(); ++a)
+        {
+            unsigned itemsize = blocks[a].len;
+            unsigned holeid   = organization[a];
+
+            unsigned spaceptr = NOWHERE;
+            if(holes[holeid] >= itemsize)
+            {
+                unsigned pagenum = holepages[holeid];
+                spaceptr = holeaddrs[holeid] + (pagenum * GetPageSize());
+                holeaddrs[holeid] += itemsize;
+                holes[holeid]     -= itemsize;
+                Del(spaceptr, itemsize);
+            }
+            else
+            {
+                Errors = true;
+            }
+            blocks[a].pos = spaceptr;
+        }
+        if(!Errors) break;
     }
     if(Errors)
         if(!quiet)
         {
-            fprintf(stderr, "ERROR: Organization failed\n");
+            std::fprintf(stderr, "ERROR: Organization failed\n");
             if(log)
-            fprintf(log, "ERROR: Organization failed\n");
+            std::fprintf(log, "ERROR: Organization failed\n");
         }
     return Errors;
 }
 
-bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned &page)
+bool freespacemap::OrganizeToAnySamePage(std::vector<freespacerec> &blocks, unsigned &page)
 {
     // To do:
     //   1. Pick a page where they all fit the best
     //   2. Organize there.
-    
+
     freespacemap saved_this = *this;
     quiet = true;
-    
-    unsigned bestpagenum = 0x00; /* Guess */
+
+    unsigned bestpagenum = 0xFF; /* Guess */
     unsigned bestpagesize = 0;
     bool first = true;
     bool candidates = false;
-    for(const_iterator i=begin(); i!=end(); ++i)
+    for(auto i = data.begin(); i != data.end(); ++i)
     {
         unsigned pagenum = i->first;
-        
-        vector<freespacerec> tmpblocks = blocks;
-        
+
+        std::vector<freespacerec> tmpblocks = blocks;
+
         if(!Organize(tmpblocks, pagenum))
         {
             // candidate!
-            
+
             // Can't use previous reference because things have changed
             // FIXME: Is this really the case?
-            const freespaceset &pagemap = find(pagenum)->second;
-            
+            const freespaceset &pagemap = data.find(pagenum)->second;
+
             unsigned freesize = 0;
-            for(freespaceset::const_iterator j=pagemap.begin(); j!=pagemap.end(); ++j)
+            for(auto j = pagemap.begin(); j != pagemap.end(); ++j)
             {
                 unsigned reclen = j->length();
                 freesize += reclen;
@@ -453,18 +518,18 @@ bool freespacemap::OrganizeToAnySamePage(vector<freespacerec> &blocks, unsigned 
                 bestpagesize = freesize;
                 first = false;
             }
-            
+
             candidates = true;
         }
     }
-    
+
     *this = saved_this;
 
     page = bestpagenum;
-    
+
     if(!candidates)
     {
-        fprintf(stderr, "Warning: All pages seem to be too small\n");
+        std::fprintf(stderr, "Warning: All pages seem to be too small\n");
     }
 
     return Organize(blocks, bestpagenum);
@@ -476,11 +541,11 @@ unsigned freespacemap::FindFromAnyPage(unsigned length)
 
     unsigned leastfree=0, bestpage=0x00; /* guess */
     bool first=true;
-    for(const_iterator i=begin(); i!=end(); ++i)
+    for(auto i = data.begin(); i != data.end(); ++i)
     {
         const freespaceset &pagemap = i->second;
-        
-        for(freespaceset::const_iterator j=pagemap.begin(); j!=pagemap.end(); ++j)
+
+        for(auto j = pagemap.begin(); j != pagemap.end(); ++j)
         {
             unsigned reclen = j->length();
             if(reclen < length) continue;
@@ -494,9 +559,9 @@ unsigned freespacemap::FindFromAnyPage(unsigned length)
     }
     if(first)
     {
-        fprintf(stderr, "No %u-byte free space block available!\n", length);
+        std::fprintf(stderr, "No %u-byte free space block available!\n", length);
         if(log)
-            fprintf(log, "No %u-byte free space block available!\n", length);
+            std::fprintf(log, "No %u-byte free space block available!\n", length);
         return NOWHERE;
     }
     return Find(bestpage, length) + (bestpage * GetPageSize());
@@ -508,15 +573,15 @@ void freespacemap::OrganizeO65linker
     (O65linker& objects, const SegmentSelection seg)
 {
     Compact();
-    
-    vector<unsigned> sizes = objects.GetSizeList(seg);
-    vector<unsigned> addrs = objects.GetAddrList(seg);
-    
-    vector<LinkageWish> linkages = objects.GetLinkageList(seg);
-    
-    map<unsigned, vector<unsigned> > destinies;
-    map<unsigned, vector<unsigned> > groups;
-    vector<unsigned> items;
+
+    std::vector<unsigned> sizes = objects.GetSizeList(seg);
+    std::vector<unsigned> addrs = objects.GetAddrList(seg);
+
+    std::vector<LinkageWish> linkages = objects.GetLinkageList(seg);
+
+    std::map<unsigned, std::vector<unsigned> > destinies;
+    std::map<unsigned, std::vector<unsigned> > groups;
+    std::vector<unsigned> items;
 
     /* All structures are filled at the same time so
      * that we can have this switch() here and see if
@@ -541,85 +606,89 @@ void freespacemap::OrganizeO65linker
                 break;
             }
         }
-        
+
     /* FIRST link those which require specific pages */
 
     /* Link each page. */
-    for(map<unsigned, vector<unsigned> >::const_iterator
-        i = destinies.begin(); i != destinies.end(); ++i)
+    for(auto i = destinies.begin(); i != destinies.end(); ++i)
     {
         const unsigned page = i->first;
-        const vector<unsigned>& items = i->second;
-        
-        vector<freespacerec> Organization(items.size());
-        
+        const std::vector<unsigned>& items = i->second;
+
+        // Only try relocating non-empty blobs
+        std::vector<freespacerec> Organization;
         for(unsigned c=0; c<items.size(); ++c)
-            Organization[c].len = sizes[items[c]];
-        
+            if(sizes[items[c]])
+                Organization.push_back(freespacerec{0u, sizes[items[c]]});
+
         Organize(Organization, page);
-        
-        for(unsigned c=0; c<items.size(); ++c)
+
+        for(unsigned d=0,c=0; c<items.size(); ++c)
         {
-            unsigned addr = Organization[c].pos;
+            if(sizes[items[c]] == 0) continue;
+            unsigned addr = Organization[d++].pos;
             if(addr != NOWHERE)
             {
-                if(seg == CODE) addr = MakeNESaddr(page, addr);
-                else addr += page * GetPageSize();
+                addr += page * GetPageSize();
             }
             addrs[items[c]] = addr;
         }
     }
-    
+
     /* SECOND link those which require same pages */
 
     /* Link each group. */
-    for(map<unsigned, vector<unsigned> >::const_iterator
-        i = groups.begin(); i != groups.end(); ++i)
+    for(auto i = groups.begin(); i != groups.end(); ++i)
     {
         //const unsigned groupnum = i->first; /* unused */
-        const vector<unsigned>& items = i->second;
-        
-        vector<freespacerec> Organization(items.size());
+        const std::vector<unsigned>& items = i->second;
 
+        // Only try relocating non-empty blobs
+        std::vector<freespacerec> Organization;
         for(unsigned c=0; c<items.size(); ++c)
-            Organization[c].len = sizes[items[c]];
-        
+            if(sizes[items[c]])
+                Organization.push_back(freespacerec{0u, sizes[items[c]]});
+
         unsigned page = NOWHERE;
         OrganizeToAnySamePage(Organization, page);
-        
-        for(unsigned c=0; c<items.size(); ++c)
+
+        for(unsigned d=0, c=0; c<items.size(); ++c)
         {
-            unsigned addr = Organization[c].pos;
+            if(sizes[items[c]] == 0) continue;
+            unsigned addr = Organization[d++].pos;
             if(addr != NOWHERE)
             {
-                if(seg == CODE) addr = MakeNESaddr(page, addr);
-                else addr += page * GetPageSize();
+                addr += page * GetPageSize();
             }
             addrs[items[c]] = addr;
         }
     }
-    
+
     /* LAST link those which go anywhere */
 
-    vector<freespacerec> Organization(items.size());
-
+    // Only try relocating non-empty blobs
+    std::vector<freespacerec> Organization;
     for(unsigned c=0; c<items.size(); ++c)
-        Organization[c].len = sizes[items[c]];
+        if(sizes[items[c]])
+            Organization.push_back(freespacerec{0u, sizes[items[c]]});
 
     OrganizeToAnyPage(Organization);
-    
-    for(unsigned c=0; c<items.size(); ++c)
+
+    for(unsigned d=0, c=0; c<items.size(); ++c)
     {
-        unsigned addr = Organization[c].pos;
+        if(sizes[items[c]] == 0) continue;
+
+        unsigned addr = Organization[d++].pos;
         if(addr != NOWHERE)
         {
-            if(seg == CODE)
-                addr = MakeNESaddr(addr / GetPageSize(), addr % GetPageSize());
+            //addr = MakeNESaddr(addr / GetPageSize(), addr % GetPageSize());
         }
         addrs[items[c]] = addr;
     }
-    
+
     /* Everything done. */
+    for(unsigned n=0; n<sizes.size(); ++n)
+        std::fprintf(stderr, "Size %04X address = %04X\n", sizes[n], addrs[n]);
 
     objects.PutAddrList(addrs, seg);
 }

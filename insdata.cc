@@ -34,8 +34,8 @@ const struct ins ins[] =
   { ".data", "gd" }, // Select seG DATA
   { ".link",         // Select linkage (modes 12 and 13)
            "--'--'--'--'--'--'--'--'--'--'--'--'li'li" },
-  { ".nop", 
-           "--'--'--'--'--'--'--'--'--'--'--'--'--'--'np" }, // A macro-length nop
+  { ".nop",          // Nop macro (mode 14)
+           "--'--'--'--'--'--'--'--'--'--'--'--'--'--'np" },
   { ".text", "gt" }, // Select seG TEXT
   { ".zero", "gz" }, // Select seG ZERO
 
@@ -90,6 +90,7 @@ const struct ins ins[] =
   { "ldx",  "--'A2'--'A6'--'B6'--'--'AE'--'BE'--"}, // doesn't support "ldx addr,x"
   { "ldy",  "--'A0'--'A4'B4'--'--'--'AC'BC'--'--"}, // doesn't support "ldy addr,y"
   { "lsr",  "4A'--'--'46'56'--'--'--'4E'5E'--'--"},
+  { "nop",  "EA'--'--'--'--'--'--'--'--'--'--'--"},
   { "nop04","--'--'--'04'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nop1A","1A'--'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nop14","--'--'--'--'14'--'--'--'0C'1C'--'--"}, // Unofficial instruction
@@ -108,7 +109,6 @@ const struct ins ins[] =
   { "nopDA","DA'--'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nopD4","--'--'--'--'D4'--'--'--'--'DC'--'--"}, // Unofficial instruction
   { "nopE2","--'E2'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
-  { "nop",  "EA'--'--'--'--'--'--'--'--'--'--'--"},
   { "nopFA","FA'--'--'--'--'--'--'--'--'--'--'--"}, // Unofficial instruction
   { "nopF4","--'--'--'--'F4'--'--'--'--'FC'--'--"}, // Unofficial instruction
   { "ora",  "--'09'--'05'15'--'01'11'0D'1D'19'--"},
@@ -154,11 +154,7 @@ unsigned GetOperand1Size(unsigned modenum)
         {
             case AddrMode::tRel8:
             case AddrMode::tByte: return 1;
-            case AddrMode::tRel16:
             case AddrMode::tWord: return 2;
-            case AddrMode::tLong: return 3;
-            case AddrMode::tA: return 0;
-            case AddrMode::tX: return 0;
             case AddrMode::tNone: ;
         }
     return 0;
@@ -171,11 +167,7 @@ unsigned GetOperand2Size(unsigned modenum)
         {
             case AddrMode::tRel8:
             case AddrMode::tByte: return 1;
-            case AddrMode::tRel16:
             case AddrMode::tWord: return 2;
-            case AddrMode::tLong: return 3;
-            case AddrMode::tA: return 0;
-            case AddrMode::tX: return 0;
             case AddrMode::tNone: ;
         }
     return 0;
@@ -194,6 +186,7 @@ bool IsReservedWord(const std::string& s)
          || s == ".word";
 }
 
+#if 0
 class Gruu
 {
 public:
@@ -234,3 +227,4 @@ public:
         }
     }
 } gruu;
+#endif

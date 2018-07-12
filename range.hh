@@ -43,8 +43,7 @@ template<typename Key, typename Valueholder, typename Allocator = std::allocator
 class rangecollection
 {
     typedef std::map<Key, Valueholder, std::less<Key>,
-      //typename Allocator::template rebind<std::pair<const Key, Valueholder> >::other
-                                                       Allocator
+        typename Allocator::template rebind<std::pair<const Key, Valueholder> >::other
                     > Cont;
     Cont data;
 public:

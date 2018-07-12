@@ -240,6 +240,7 @@ May 13 2007; 1.1.3.1 fixes a bug regarding comments in #included files.<br>
 Oct 27 2007; 1.1.4 added some new features in clever-disasm, and example ini files.<br>
 Mar 27 2016; 1.1.8 added xa65 obj file support, and no longer depends on libboost.<br>
 May 14 2016; 1.1.8.1 adds more example ini files for clever-disasm.<br>
+Jul 12 2018; 1.2.0 added demo, partial rewrite for C++17
 
 ", 'bugs:1. Known bugs' => "
 

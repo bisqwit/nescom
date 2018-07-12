@@ -1,9 +1,10 @@
 /* xa65 object file loader and linker for C++
  * For loading and linking 65816 object files
- * Copyright (C) 1992,2016 Bisqwit (http://iki.fi/bisqwit/)
+ * Copyright (C) 1992,2018 Bisqwit (http://iki.fi/bisqwit/)
  *
- * Version 1.9.2 - Aug 18 2003, Sep 4 2003, Jan 23 2004,
- *                 Jan 31 2004, Mar 27 2016
+ * Version 1.9.3 - Aug 18 2003, Sep 4 2003, Jan 23 2004,
+ *                 Jan 31 2004, Feb 18 2005, Mar 27 2016,
+ *                 Jun 27 2018, Jul 12 2018
  */
 
 #define DEBUG_FIXUPS 0
@@ -14,17 +15,12 @@
 
 #include "o65.hh"
 
-using std::set;
-using std::map;
-using std::make_pair;
 using std::fprintf;
 #ifndef stderr
 using std::stderr;
 #endif
 
 #include "relocdata.hh"
-
-// TODO: per-segment linkage instruction
 
 namespace
 {
@@ -109,9 +105,9 @@ public:
         undefines.erase(a);
         defines[a] = value;
     }
-    const vector<std::string> GetExternList() const
+    const std::vector<std::string> GetExternList() const
     {
-        vector<std::string> result;
+        std::vector<std::string> result;
         result.reserve(undefines.size());
         for(std::set<unsigned>::const_iterator
             i = undefines.begin(); i != undefines.end(); ++i)
@@ -137,13 +133,13 @@ public:
 class O65::Segment
 {
 public:
-    vector<unsigned char> space;
+    std::vector<unsigned char> space;
 
     //! where it is assumed to start
     unsigned base;
 
     //! absolute addresses of all publics
-    typedef map<std::string, unsigned> publicmap_t;
+    typedef std::map<std::string, unsigned> publicmap_t;
     publicmap_t publics;
 
 public:
@@ -312,7 +308,7 @@ void O65::Load(FILE* fp)
                         case EXPR_WORD1: return "word1(" + left->Dump() + ")";
                         case EXPR_FARADDR: return "far(" + left->Dump() + ")";
                         case EXPR_DWORD:   return "dword(" + left->Dump() + ")";
-                        default: { char Buf[64]; std::sprintf(Buf, "??op%02X(", op); return Buf + left->Dump() + "," + right->Dump() + ")"; }
+                        default: { char Buf[64]; std::sprintf(Buf, "??op$%02X(", op); return Buf + left->Dump() + "," + right->Dump() + ")"; }
                     }
                 }
             };
@@ -478,7 +474,7 @@ void O65::Load(FILE* fp)
                         case 0x20: // FRAG_FILL  - Fill bytes
                         {
                             unsigned Size = LoadVar(fp);
-                            //fprintf(stderr, "Fragment type %02X bytes=%d at %04X\n", FragType,Size, frag_start);
+                            //fprintf(stderr, "Fragment type $%02X bytes=%d at %04X\n", FragType,Size, frag_start);
 
                             seg->space.resize(frag_start + Size);
                             if((FragType & 0x38) == 0x00) // Don't read if FRAG_FILL
@@ -495,7 +491,7 @@ void O65::Load(FILE* fp)
                             ex.expr.Load(fp);
                             ex.pc    = frag_start;
                             ex.bytes = Bytes;
-                            //fprintf(stderr, "Fragment type %02X bytes=%d at %04X expr=%s\n", FragType,Bytes, frag_start, ex.expr.Dump().c_str());
+                            //fprintf(stderr, "Fragment type $%02X bytes=%d at %04X expr=%s\n", FragType,Bytes, frag_start, ex.expr.Dump().c_str());
 
                             section.expressions.emplace_back(std::move(ex));
                             seg->space.resize(frag_start + Bytes);
@@ -503,7 +499,7 @@ void O65::Load(FILE* fp)
                             break;
                         }
                         default:
-                            fprintf(stderr, "Unknown fragment type %02X\n", FragType&0x38);
+                            fprintf(stderr, "Unknown fragment type $%02X\n", FragType&0x38);
                     }
                     for(unsigned c=LoadVar(fp); c--; LoadVar(fp)); // Skip line info list
                 }
@@ -644,7 +640,7 @@ void O65::Load(FILE* fp)
 
                 std::string data = LoadRaw(fp, len);
                 //fprintf(stderr, "Custom header %u: '%.*s'\n", type, len, data.data());
-                customheaders.push_back(make_pair(type, data));
+                customheaders.emplace_back(type, data);
             }
 
             LoadRawTo(fp, this->code->space.size(), &this->code->space[0]);
@@ -753,7 +749,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
     if(is_me)
     {
         /* Relocate publics */
-        map<std::string, unsigned>::iterator i;
+        std::map<std::string, unsigned>::iterator i;
         for(i = publics.begin(); i != publics.end(); ++i)
         {
             i->second += diff;
@@ -769,7 +765,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
         unsigned newvalue = oldvalue + diff;
 
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %04X with %04X at %06X\n", oldvalue,newvalue&65535, addr);
+        fprintf(stderr, "Replaced $%04X with $%04X at $%06X\n", oldvalue,newvalue&65535, addr);
 #endif
         space[addr] = newvalue&255;
         space[addr+1] = (newvalue>>8) & 255;
@@ -781,7 +777,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
         unsigned oldvalue = space[addr];
         unsigned newvalue = oldvalue + diff;
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X at %06X\n", oldvalue,newvalue&255, addr);
+        fprintf(stderr, "Replaced $%02X with $%02X at $%06X\n", oldvalue,newvalue&255, addr);
 #endif
         space[addr] = newvalue & 255;
     }
@@ -792,7 +788,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
         unsigned oldvalue = (space[addr] << 8) | R.R16hi.Fixups[a].second.second;
         unsigned newvalue = oldvalue + diff;
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X at %06X\n", space[addr],(newvalue>>8)&255, addr);
+        fprintf(stderr, "Replaced $%02X with $%02X at $%06X\n", space[addr],(newvalue>>8)&255, addr);
 #endif
         space[addr] = (newvalue>>8) & 255;
     }
@@ -804,7 +800,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
         unsigned newvalue = oldvalue + diff;
 
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %06X with %06X at %06X\n", oldvalue,newvalue, addr);
+        fprintf(stderr, "Replaced $%06X with $%06X at $%06X\n", oldvalue,newvalue, addr);
 #endif
         space[addr] = newvalue&255;
         space[addr+1] = (newvalue>>8) & 255;
@@ -818,7 +814,7 @@ void O65::Segment::Locate(SegmentSelection seg, unsigned diff, bool is_me)
         unsigned newvalue = oldvalue + diff;
 
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X at %06X\n", space[addr],newvalue>>16, addr);
+        fprintf(stderr, "Replaced $%02X with $%02X at $%06X\n", space[addr],newvalue>>16, addr);
 #endif
         space[addr] = (newvalue>>16) & 255;
     }
@@ -858,7 +854,7 @@ void O65::Segment::LocateSym(unsigned symno, unsigned value)
         unsigned oldvalue = space[addr] | (space[addr+1] << 8);
         unsigned newvalue = oldvalue + value;
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %04X with %04X for sym %u\n", oldvalue,newvalue&65535, symno);
+        fprintf(stderr, "Replaced $%04X with $%04X for sym %u (value $%X)\n", oldvalue,newvalue&65535, symno, newvalue);
 #endif
         space[addr] = newvalue&255;
         space[addr+1] = (newvalue>>8) & 255;
@@ -870,7 +866,7 @@ void O65::Segment::LocateSym(unsigned symno, unsigned value)
         unsigned oldvalue = space[addr];
         unsigned newvalue = oldvalue + value;
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X for sym %u\n", oldvalue,newvalue&255, symno);
+        fprintf(stderr, "Replaced $%02X with $%02X for sym %u (value $%X)\n", oldvalue,newvalue&255, symno, newvalue);
 #endif
         space[addr] = newvalue & 255;
     }
@@ -881,8 +877,8 @@ void O65::Segment::LocateSym(unsigned symno, unsigned value)
         unsigned oldvalue = (space[addr] << 8) | R.R16hi.Relocs[a].first.second;
         unsigned newvalue = oldvalue + value;
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X for sym %u\n",
-            space[addr],(newvalue>>8)&255, symno);
+        fprintf(stderr, "Replaced $%02X with $%02X for sym %u (value $%X)\n",
+            space[addr],(newvalue>>8)&255, symno, newvalue);
 #endif
         space[addr] = (newvalue>>8) & 255;
     }
@@ -894,7 +890,7 @@ void O65::Segment::LocateSym(unsigned symno, unsigned value)
         unsigned newvalue = oldvalue + value;
 
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %06X with %06X for sym %u\n", oldvalue,newvalue, symno);
+        fprintf(stderr, "Replaced $%06X with $%06X for sym %u (value $%X)\n", oldvalue,newvalue, symno, newvalue);
 #endif
         space[addr] = newvalue&255;
         space[addr+1] = (newvalue>>8) & 255;
@@ -908,13 +904,13 @@ void O65::Segment::LocateSym(unsigned symno, unsigned value)
         unsigned newvalue = oldvalue + value;
 
 #if DEBUG_FIXUPS
-        fprintf(stderr, "Replaced %02X with %02X for sym %u\n", space[addr],newvalue>>16, symno);
+        fprintf(stderr, "Replaced $%02X with $%02X for sym %u (value $%X)\n", space[addr],newvalue>>16, symno, newvalue);
 #endif
         space[addr] = (newvalue>>16) & 255;
     }
 }
 
-const vector<unsigned char>& O65::GetSeg(SegmentSelection seg) const
+const std::vector<unsigned char>& O65::GetSeg(SegmentSelection seg) const
 {
     if(const Segment*const *s = GetSegRef(seg))
     {
@@ -957,9 +953,9 @@ bool O65::HasSym(SegmentSelection seg, const std::string& name) const
     return false;
 }
 
-const vector<std::string> O65::GetSymbolList(SegmentSelection seg) const
+const std::vector<std::string> O65::GetSymbolList(SegmentSelection seg) const
 {
-    vector<std::string> result;
+    std::vector<std::string> result;
     if(const Segment*const *s = GetSegRef(seg))
     {
         const O65::Segment::publicmap_t& pubs = (*s)->publics;
@@ -975,7 +971,7 @@ const vector<std::string> O65::GetSymbolList(SegmentSelection seg) const
     return result;
 }
 
-const vector<std::string> O65::GetExternList() const
+const std::vector<std::string> O65::GetExternList() const
 {
     return defs->GetExternList();
 }
@@ -1027,7 +1023,7 @@ void O65::Write(SegmentSelection seg, unsigned addr, unsigned char value)
     }
 }
 
-void O65::LoadSegFrom(SegmentSelection seg, const vector<unsigned char>& buf)
+void O65::LoadSegFrom(SegmentSelection seg, const std::vector<unsigned char>& buf)
 {
     if(Segment**s = GetSegRef(seg))
     {
@@ -1083,6 +1079,7 @@ void O65::DeclareWordRelocation(SegmentSelection seg, const std::string& name, u
 }
 
 /*
+// This would be used by IPS code only
 void O65::DeclareHiByteRelocation(SegmentSelection seg, const std::string& name, unsigned addr)
 {
     Segment**s = GetSegRef(seg); if(!s) return;
@@ -1172,7 +1169,7 @@ void O65::Segment::LoadRelocations(FILE* fp)
                     default:
                     {
                         fprintf(stderr,
-                            "Error: External reloc type %02X not supported yet\n",
+                            "Error: External reloc type $%02X not supported yet\n",
                             type);
                     }
                 }
@@ -1184,7 +1181,7 @@ void O65::Segment::LoadRelocations(FILE* fp)
             case BSS:  // bss  =4
             {
                 SegmentSelection seg = (SegmentSelection)area;
-                //fprintf(stderr, "Fixup into %u (%X) -- type=%02X\n", seg, addr, type);
+                //fprintf(stderr, "Fixup into %u (%X) -- type=$%02X\n", seg, addr, type);
                 switch(type)
                 {
                     case 0x20:
@@ -1217,7 +1214,7 @@ void O65::Segment::LoadRelocations(FILE* fp)
                     default:
                     {
                         fprintf(stderr,
-                            "Error: Fixup type %02X not supported yet\n",
+                            "Error: Fixup type $%02X not supported yet\n",
                             type);
                     }
                 }
@@ -1226,14 +1223,14 @@ void O65::Segment::LoadRelocations(FILE* fp)
             default:
             {
                 fprintf(stderr,
-                    "Error: Reloc area type %02X not supported yet\n",
+                    "Error: Reloc area type $%02X not supported yet\n",
                         area);
             }
         }
     }
 }
 
-const vector<pair<unsigned char, std::string> >& O65::GetCustomHeaders() const
+const std::vector<std::pair<unsigned char, std::string>>& O65::GetCustomHeaders() const
 {
     return customheaders;
 }
@@ -1255,5 +1252,5 @@ const std::string GetSegmentName(const SegmentSelection seg)
         case ZERO: return "zero";
         case BSS: return "bss";
     }
-    return "?";
+    return "seg" + std::to_string(int(seg));
 }

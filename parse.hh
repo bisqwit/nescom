@@ -2,12 +2,11 @@
 #define bqt65asmParseHH
 
 #include <string>
+#include <memory>
 
 #include "expr.hh"
 #include "assemble.hh"
 #include "tristate"
-
-#include <memory>
 
 #undef EOF
 
@@ -15,9 +14,9 @@ struct ParseData
 {
 private:
     std::string data;
-    size_t pos, eofpos;
+    unsigned pos, eofpos;
 public:
-    typedef size_t StateType;
+    typedef unsigned StateType;
 
     ParseData() : data(), pos(0), eofpos(0) { }
     ParseData(const std::string& s) : data(s), pos(0), eofpos(data.size()) { }
@@ -27,16 +26,17 @@ public:
     void SkipSpace() { while(!EOF() && (data[pos] == ' ' || data[pos] == '\t'))++pos; }
     StateType SaveState() const { return pos; }
     void LoadState(const StateType state) { pos = state; }
-    char GetC() { return EOF() ? '\0' : data[pos++]; }
-    char PeekC() const { return EOF() ? '\0' : data[pos]; }
+    char GetC() { return EOF() ? 0 : data[pos++]; }
+    char PeekC() const { return EOF() ? 0 : data[pos]; }
 
     const std::string GetRest() const { return data.substr(pos); }
 };
 
+class Object;
 struct ins_parameter
 {
     char prefix;
-    std::shared_ptr<expression> exp;
+    std::unique_ptr<expression> exp;
 
     ins_parameter(): prefix(0), exp(/*NULL*/)
     {
@@ -47,37 +47,9 @@ struct ins_parameter
     {
     }
 
-    // Note: No deletes here. Would cause problems when storing in vectors.
-
-    tristate is_byte() const
-    {
-        if(prefix == FORCE_LOBYTE
-        || prefix == FORCE_HIBYTE
-        || prefix == FORCE_SEGBYTE)
-        {
-            return true;
-        }
-        if(prefix) return false;
-        if(!exp->IsConst()) return maybe;
-        long value = exp->GetConst();
-        return value >= -0x80 && value < 0x100;
-    }
-    tristate is_word() const
-    {
-        if(prefix == FORCE_ABSWORD) return true;
-        if(prefix) return false;
-        if(!exp->IsConst()) return maybe;
-        long value = exp->GetConst();
-        return value >= -0x8000 && value < 0x10000;
-    }
-    tristate is_long() const
-    {
-        if(prefix == FORCE_LONG) return true;
-        if(prefix) return false;
-        if(!exp->IsConst()) return maybe;
-        long value = exp->GetConst();
-        return value >= -0x800000 && value < 0x1000000;
-    }
+    tristate is_byte(const Object& obj) const;
+    tristate is_word(const Object& obj) const;
+    tristate is_long(const Object& obj) const;
 
     const std::string Dump() const
     {
@@ -86,16 +58,13 @@ struct ins_parameter
         if(exp) result += exp->Dump(); else result += "(nil)";
         return result;
     }
-public:
-    ins_parameter(const ins_parameter& p) : prefix(p.prefix), exp(p.exp)
-    {
-    }
 };
 
 bool ParseExpression(ParseData& data, ins_parameter& result);
 
 tristate ParseAddrMode(ParseData& data, unsigned modenum,
-                       ins_parameter& p1, ins_parameter& p2);
+                       ins_parameter& p1, ins_parameter& p2,
+                       const Object& obj);
 
 bool IsDelimiter(char c);
 

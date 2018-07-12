@@ -3,6 +3,7 @@
 #include "parse.hh"
 #include "expr.hh"
 #include "insdata.hh"
+#include "object.hh"
 
 namespace
 {
@@ -73,22 +74,22 @@ namespace
         return token;
     }
 
-    expression* CreatePlusExpr(expression* left, expression* right)
+    std::unique_ptr<expression> CreatePlusExpr(std::unique_ptr<expression>&& left, std::unique_ptr<expression>&& right)
     {
-        return new sum_group(left, right, false);
+        return std::unique_ptr<expression>( new sum_group(std::move(left), std::move(right), false) );
     }
 
-    expression* CreateMinusExpr(expression* left, expression* right)
+    std::unique_ptr<expression> CreateMinusExpr(std::unique_ptr<expression>&& left, std::unique_ptr<expression>&& right)
     {
-        return new sum_group(left, right, true);
+        return std::unique_ptr<expression>( new sum_group(std::move(left), std::move(right), true) );
     }
 
-    expression* RealParseExpression(ParseData& data, int prio=0,
-                                    char disallow_local_label=0)
+    std::unique_ptr<expression> RealParseExpression(ParseData& data, int prio=0,
+                                                    char disallow_local_label=0)
     {
         std::string s = ParseToken(data);
 
-        expression* left = NULL;
+        std::unique_ptr<expression> left; // NULL
 
         if(s.empty()) /* If no number or symbol */
         {
@@ -127,7 +128,7 @@ namespace
                     if(RestBefore != RestAfter)
                     {
                         // If the error happened later, return an error.
-                        return left;
+                        return std::move(left);
                     }
 
                     // If it ate *nothing*, we've got PrevBranchLabel here.
@@ -135,7 +136,7 @@ namespace
                 }
                 else
                 {
-                    left = new expr_negate(left);
+                    left = std::unique_ptr<expression>( new expr_negate(std::move(left)) );
                 }
             }
             else if(c == '~')
@@ -143,8 +144,8 @@ namespace
                 ParseData::StateType state = data.SaveState();
                 data.GetC(); // eat
                 left = RealParseExpression(data, prio_bitnot);
-                if(!left) { data.LoadState(state); return left; }
-                left = new expr_bitnot(left);
+                if(!left) { data.LoadState(state); return std::move(left); }
+                left = std::unique_ptr<expression>( new expr_bitnot(std::move(left)) );
             }
             else if(c == '(')
             {
@@ -153,8 +154,8 @@ namespace
                 left = RealParseExpression(data, 0);
                 data.SkipSpace();
                 if(data.PeekC() == ')') data.GetC();
-                else if(left) { delete left; left = NULL; }
-                if(!left) { data.LoadState(state); return left; }
+                else if(left) { left.reset(); } // set NULL
+                if(!left) { data.LoadState(state); return std::move(left); }
             }
             else
             {
@@ -162,16 +163,16 @@ namespace
                 switch(local_label)
                 {
                     case '-':
-                        left = new expr_label(GetPrevBranchLabel(local_length));
+                        left = std::unique_ptr<expression>( new expr_label(GetPrevBranchLabel(local_length)) );
                         for(unsigned a=0; a<local_length; ++a) data.GetC();
                         break;
                     case '+':
-                        left = new expr_label(GetNextBranchLabel(local_length));
+                        left = std::unique_ptr<expression>( new expr_label(GetNextBranchLabel(local_length)) );
                         for(unsigned a=0; a<local_length; ++a) data.GetC();
                         break;
                 }
                 // default
-                return left;
+                return std::move(left);
             }
         }
         else if(s[0] == '-' || s[0] == '$' || (s[0] >= '0' && s[0] <= '9'))
@@ -201,26 +202,26 @@ namespace
             }
 
             if(negative) value = -value;
-            left = new expr_number(value);
+            left = std::unique_ptr<expression>( new expr_number(value) );
         }
         else
         {
             if(IsReservedWord(s))
             {
                 /* Attempt to use a reserved as variable name */
-                return left;
+                return std::move(left);
             }
 
-            left = new expr_label(s);
+            left = std::unique_ptr<expression>( new expr_label(std::move(s)) );
         }
 
         data.SkipSpace();
-        if(!left) return left;
+        if(!left) return std::move(left);
 
     Reop:
         if(!data.EOF())
         {
-            #define op2(reqprio, c1,c2, create_expr) \
+            #define op2(reqprio, c1,c2, create_binaryexpr) \
                 if(prio < reqprio && data.PeekC() == c1) \
                 { \
                     ParseData::StateType state = data.SaveState(); \
@@ -235,18 +236,16 @@ namespace
                     if(ok) \
                     { \
                         data.GetC(); \
-                        expression *right = RealParseExpression(data, reqprio); \
+                        std::unique_ptr<expression> right = RealParseExpression(data, reqprio); \
                         if(!right) \
                         { \
                             data.LoadState(state); \
-                            return left; \
+                            return std::move(left); \
                         } \
-                        left = create_expr(left, right); \
+                        left = std::unique_ptr<expression>( create_binaryexpr(std::move(left), std::move(right)) ); \
                         if(left->IsConst()) \
                         { \
-                            right = new expr_number(left->GetConst()); \
-                            delete left; \
-                            left = right; \
+                            left = std::unique_ptr<expression>( new expr_number(left->GetConst()) ); \
                         } \
                         goto Reop; \
                 }   }
@@ -261,7 +260,7 @@ namespace
             op2(prio_bitor,  '|',   0, new expr_bitor);
             op2(prio_bitxor, '^',   0, new expr_bitxor);
         }
-        return left;
+        return std::move(left);
     }
 }
 
@@ -288,21 +287,17 @@ bool ParseExpression(ParseData& data, ins_parameter& result)
         prefix = 0;
     }
 
-    expression* e = RealParseExpression(data);
-
+    std::unique_ptr<expression> e = RealParseExpression(data);
     if(e)
     {
         e->Optimize(e);
     }
 
-    //std::fprintf(stderr, "ParseExpression returned: '%s'\n", result.Dump().c_str());
-
-    std::shared_ptr<expression> tmp(e);
-
     result.prefix = prefix;
-    result.exp.swap(tmp);
+    result.exp    = std::move(e);
 
-    return e != NULL;
+    //std::fprintf(stderr, "ParseExpression returned: '%s'\n", result.Dump().c_str());
+    return result.exp.get() != nullptr;
 }
 
 static bool CompareChar(char c1, char c2)
@@ -313,7 +308,8 @@ static bool CompareChar(char c1, char c2)
 }
 
 tristate ParseAddrMode(ParseData& data, unsigned modenum,
-                       ins_parameter& p1, ins_parameter& p2)
+                       ins_parameter& p1, ins_parameter& p2,
+                       const Object& obj)
 {
     #define ParseReq(s) \
         for(const char *q = s; *q; ++q, data.GetC()) { \
@@ -339,24 +335,16 @@ tristate ParseAddrMode(ParseData& data, unsigned modenum,
     tristate result = data.EOF();
     switch(modedata.p1)
     {
-        case AddrMode::tByte: result=result && p1.is_byte(); break;
-        case AddrMode::tWord: result=result && p1.is_word(); break;
-        case AddrMode::tLong: result=result && p1.is_long(); break;
-        case AddrMode::tA: result=result && A_16bit ? p1.is_word() : p1.is_byte(); break;
-        case AddrMode::tX: result=result && X_16bit ? p1.is_word() : p1.is_byte(); break;
+        case AddrMode::tByte: result=result && p1.is_byte(obj); break;
+        case AddrMode::tWord: result=result && p1.is_word(obj); break;
         case AddrMode::tRel8: ;
-        case AddrMode::tRel16: ;
         case AddrMode::tNone: ;
     }
     switch(modedata.p2)
     {
-        case AddrMode::tByte: result=result && p2.is_byte(); break;
-        case AddrMode::tWord: result=result && p2.is_word(); break;
-        case AddrMode::tLong: result=result && p2.is_long(); break;
-        case AddrMode::tA: result=result && A_16bit ? p2.is_word() : p2.is_byte(); break;
-        case AddrMode::tX: result=result && X_16bit ? p2.is_word() : p2.is_byte(); break;
+        case AddrMode::tByte: result=result && p2.is_byte(obj); break;
+        case AddrMode::tWord: result=result && p2.is_word(obj); break;
         case AddrMode::tRel8: ;
-        case AddrMode::tRel16: ;
         case AddrMode::tNone: ;
     }
 
@@ -371,4 +359,78 @@ tristate ParseAddrMode(ParseData& data, unsigned modenum,
 bool IsDelimiter(char c)
 {
     return c == ':' || c == '\r' || c == '\n';
+}
+
+tristate ins_parameter::is_byte(const Object& obj) const
+{
+    if(prefix)
+    {
+        return prefix == FORCE_LOBYTE || prefix == FORCE_HIBYTE || prefix == FORCE_SEGBYTE;
+    }
+
+    if(!exp->IsConst())
+    {
+        auto p = IsLabelSumExpression(exp);
+        if(p.second < -0x80 || p.second >= 0x100) return false;
+        // If it's a sum expression or a label, 
+        // check if the label is in .zero segment (ZERO)
+        // and the offset is smaller than 256.
+        // If so, this is a byte param.
+        if(!p.first.empty())
+        {
+            SegmentSelection seg;
+            unsigned         value=0;
+            if(obj.FindLabel(p.first, seg, value) && seg==ZERO && value+p.second < 0x100)
+            {
+                // Yes, this fits in a byte
+                return true;
+            }
+        }
+        // Could be.
+        return maybe;
+    }
+    else
+    {
+        long value = exp->GetConst();
+        return value >= -0x80 && value < 0x100;
+    }
+}
+
+tristate ins_parameter::is_word(const Object& obj) const
+{
+    if(prefix)
+    {
+        return prefix == FORCE_ABSWORD;
+    }
+
+    if(!exp->IsConst())
+    {
+        auto p = IsLabelSumExpression(exp);
+        if(p.second < -0x8000 || p.second >= 0x10000) return false;
+        // Could be.
+        return maybe;
+    }
+    else
+    {
+        long value = exp->GetConst();
+        return value >= -0x8000 && value < 0x10000;
+    }
+}
+
+tristate ins_parameter::is_long(const Object& obj) const
+{
+    if(prefix)
+    {
+        return prefix == FORCE_LONG;
+    }
+
+    if(!exp->IsConst())
+    {
+        return maybe;
+    }
+    else
+    {
+        long value = exp->GetConst();
+        return value >= -0x800000 && value < 0x1000000;
+    }
 }
