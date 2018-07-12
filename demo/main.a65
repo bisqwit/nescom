@@ -1,40 +1,86 @@
-.link page 0
-
 #define SOUND_BUFFER_SIZE 16
 
 .zero
 NumIssuedSounds  .byt 0
+TempPtr          .word 0
 .bss
 IssuedSoundsList .nop SOUND_BUFFER_SIZE
 DelayCounter     .byt 0
 
-.text
+.data
+.link group 1
+PalData:
+	.byt $01,$20,$20,$20
+BlankTile:
+	.byt $00,$00,$00,$00,$00,$00,$00,$00, $00,$00,$00,$00,$00,$00,$00,$00
+FontData:
+	.byt $30,$78,$cc,$cc,$fc,$cc,$cc,$00, $30,$78,$cc,$cc,$fc,$cc,$cc,$00
+	.byt $fc,$66,$66,$7c,$66,$66,$fc,$00, $fc,$66,$66,$7c,$66,$66,$fc,$00
+	.byt $3c,$66,$c0,$c0,$c0,$66,$3c,$00, $3c,$66,$c0,$c0,$c0,$66,$3c,$00
+	.byt $f8,$6c,$66,$66,$66,$6c,$f8,$00, $f8,$6c,$66,$66,$66,$6c,$f8,$00
+	.byt $fe,$62,$68,$78,$68,$62,$fe,$00, $fe,$62,$68,$78,$68,$62,$fe,$00
+	.byt $fe,$62,$68,$78,$68,$60,$f0,$00, $fe,$62,$68,$78,$68,$60,$f0,$00
+	.byt $3c,$66,$c0,$c0,$ce,$66,$3e,$00, $3c,$66,$c0,$c0,$ce,$66,$3e,$00
+	.byt $cc,$cc,$cc,$fc,$cc,$cc,$cc,$00, $cc,$cc,$cc,$fc,$cc,$cc,$cc,$00
+	.byt $78,$30,$30,$30,$30,$30,$78,$00, $78,$30,$30,$30,$30,$30,$78,$00
+	.byt $1e,$0c,$0c,$0c,$cc,$cc,$78,$00, $1e,$0c,$0c,$0c,$cc,$cc,$78,$00
+	.byt $e6,$66,$6c,$78,$6c,$66,$e6,$00, $e6,$66,$6c,$78,$6c,$66,$e6,$00
+	.byt $f0,$60,$60,$60,$62,$66,$fe,$00, $f0,$60,$60,$60,$62,$66,$fe,$00
+	.byt $c6,$ee,$fe,$fe,$d6,$c6,$c6,$00, $c6,$ee,$fe,$fe,$d6,$c6,$c6,$00
+	.byt $c6,$e6,$f6,$de,$ce,$c6,$c6,$00, $c6,$e6,$f6,$de,$ce,$c6,$c6,$00
+	.byt $38,$6c,$c6,$c6,$c6,$6c,$38,$00, $38,$6c,$c6,$c6,$c6,$6c,$38,$00
+	.byt $fc,$66,$66,$7c,$60,$60,$f0,$00, $fc,$66,$66,$7c,$60,$60,$f0,$00
+	.byt $78,$cc,$cc,$cc,$dc,$78,$1c,$00, $78,$cc,$cc,$cc,$dc,$78,$1c,$00
+	.byt $fc,$66,$66,$7c,$6c,$66,$e6,$00, $fc,$66,$66,$7c,$6c,$66,$e6,$00
+	.byt $78,$cc,$e0,$70,$1c,$cc,$78,$00, $78,$cc,$e0,$70,$1c,$cc,$78,$00
+	.byt $fc,$b4,$30,$30,$30,$30,$78,$00, $fc,$b4,$30,$30,$30,$30,$78,$00
+	.byt $cc,$cc,$cc,$cc,$cc,$cc,$fc,$00, $cc,$cc,$cc,$cc,$cc,$cc,$fc,$00
+	.byt $cc,$cc,$cc,$cc,$cc,$78,$30,$00, $cc,$cc,$cc,$cc,$cc,$78,$30,$00
+	.byt $c6,$c6,$c6,$d6,$fe,$ee,$c6,$00, $c6,$c6,$c6,$d6,$fe,$ee,$c6,$00
+	.byt $c6,$c6,$6c,$38,$38,$6c,$c6,$00, $c6,$c6,$6c,$38,$38,$6c,$c6,$00
+	.byt $cc,$cc,$cc,$78,$30,$30,$78,$00, $cc,$cc,$cc,$78,$30,$30,$78,$00
+	.byt $fe,$c6,$8c,$18,$32,$66,$fe,$00, $fe,$c6,$8c,$18,$32,$66,$fe,$00
+	.byt $78,$60,$60,$60,$60,$60,$78,$00, $78,$60,$60,$60,$60,$60,$78,$00
+TextData:
+	.byt $54,$48,$49,$53,$00,$49,$53,$00,$41,$4E,$00     ; THIS IS AN
+	.byt $49,$4C,$4C,$55,$53,$54,$52,$41,$54,$49,$4F,$4E ; ILLUSTRATION
 
+.text
+.link group 1
 RESET_GAME:
 	lda #2: jsr TimeDelay
 
 	; Set blue background
-	lda #$3F : sta $2006
-	lda #$00 : sta $2006
-	lda #$01 : sta $2007
-	
-	lda #$80 : sta $2000 ;enable nmi
-	lda #$F0 : sta $2001 ;enable ppu
-	
-	lda #3: jsr TimeDelay
-	lda #$FF : jsr IssueSound
-	
-	lda #1: jsr TimeDelay
-	lda #$FE : jsr IssueSound
+	lda #0
+	sta $2000 : sta $2001
+	sta $2005 : sta $2005
 
-	lda #1: jsr TimeDelay
-	lda #8   : jsr IssueSound
+	lda #$3F : ldx #$00 : jsr SetPPUaddr
+	lda #<PalData : ldy #>PalData : ldx #4 : jsr SendPPU
+	lda #<PalData : ldy #>PalData : ldx #4 : jsr SendPPU
+	lda #<PalData : ldy #>PalData : ldx #4 : jsr SendPPU
+	lda #<PalData : ldy #>PalData : ldx #4 : jsr SendPPU
+
+	lda #$00 : ldx #$00 : jsr SetPPUaddr
+	lda #<BlankTile     : ldy #>BlankTile : ldx #$10 : jsr SendPPU
+
+	lda #$04 : ldx #$10 : jsr SetPPUaddr
+	lda #<FontData      : ldy #>FontData      : ldx #$00 : jsr SendPPU
+	lda #<FontData+$100 : ldy #>FontData+$100 : ldx #$A0 : jsr SendPPU
+
+	lda #$20 : ldx #$A4 : jsr SetPPUaddr
+	lda #<TextData : ldy #>TextData   : ldx #25 : jsr SendPPU
+
+	lda #$00 : ldx #$00 : jsr SetPPUaddr
+
+	lda #$80 : sta $2000 ;enable nmi
+	lda #$FE : sta $2001 ;enable ppu
 	
+	lda #8 : jsr IssueSound
 	; A dummy loop, issue a Big Eye jumping sound every 3 seconds.
 
 -	lda #60*3 : jsr TimeDelay
 	lda #$29 : jsr IssueSound
-
 	jmp -
 
 
@@ -55,3 +101,18 @@ NextFrame:
 	- lda $2002 : bmi -
 	rts
 
+
+SetPPUaddr:
+	sta $2006
+	stx $2006
+	rts
+SendPPU:
+	sta TempPtr+0
+	sty TempPtr+1
+	ldy #0
+      - lda (TempPtr),y
+	sta $2007
+	iny
+	dex
+	bne -
+	rts

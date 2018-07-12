@@ -35,11 +35,9 @@ RESET:
 NMI:
 .(
 	pha
-	txa: pha
-	tya: pha
-	lda CurrentBank: pha
-
-#define SOUND_BUFFER_SIZE 16
+	txa : pha
+	tya : pha
+	lda CurrentBank : pha
 
 CallSoundCode:
 	 ; Currently our NMI does nothing but calls Capcom's music engine.
@@ -51,20 +49,18 @@ CallSoundCode:
 	 jsr SoundCodePlay
 	 
 	 ; Check if a sound change was requested
-.(
     -	 ldx <NumIssuedSounds
 	 beq +++
 	 lda IssuedSoundsList-1,x
 	 ; Process 00..3F and FC..FF, ignore 40..FB
-	 ldy #$00
-    +	 cmp #$FC : bcs +
-	 cmp #$40 : bcs ++
-    +	 jsr SoundCodeInit
+	 cmp #$40 : bcc +
+	 cmp #$FC : bcc ++
+       + ldy #0
+         jsr SoundCodeInit
     	 ; Done processing
-    ++	 dec <NumIssuedSounds
+      ++ dec <NumIssuedSounds
  	 bne -
     +++	 ; Done with sound change processing
-.)
 
 NMIexit:
 	pla : jsr SwitchBank
@@ -88,33 +84,3 @@ SwitchBankCurrent:
 	pla
 	tax
 	rts
-
-
-#if 0
-;incomplete code...
-.zero
-.byt  CalleeBank
-.word GotoAddr
-.text
-CallBank:
-	sta CalleeBank
-	lda CurrentBank : pha
-	sta $C000
-	pla : sta GotoAddr+0
-	pla : sta GotoAddr+1
-	tya : pha
-	txa : pha
-	 lda #0 : tay
-	  lda (GotoAddr), y
-	  tax
-	 lda #1 : tay
-	  lda (GotoAddr), y
-	  sta GotoAddr+1
-	  txa
-	  sta GotoAddr+0
-	pla : tax
-	pla : tay
-	lda CurrentBank : pha
-	 lda CalleeBank : sta $C000
-	 jmp (
-#endif	

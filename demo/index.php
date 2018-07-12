@@ -56,7 +56,7 @@
   </table>
   
   <p>
-  Copyright &copy; 1992, 2006 Bisqwit
+  Copyright &copy; 1992,2018 Bisqwit
   (<a href="http://iki.fi/bisqwit/">http://iki.fi/bisqwit/</a>)
   
   <hr>

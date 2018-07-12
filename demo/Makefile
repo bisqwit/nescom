@@ -8,11 +8,11 @@ demo.nes: $(OBJS)
 
 # Generic rule to create .o65 out from .a65
 %.o65: %.a65
-	nescom -J -Wall -o $@ $<
+	nescom  -Wall -o $@ $<
 
 # Generic rule to create .ips out from .a65
 %.ips: %.a65
-	nescom -J -I -Wall -o $@ $<
+	nescom  -I -Wall -o $@ $<
 
 clean:
 	rm -f *.ips *.o65 *~ demo.nes

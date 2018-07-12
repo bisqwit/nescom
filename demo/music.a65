@@ -1,8 +1,5 @@
-;*= $049000
-;.nop $3000
-
 .text
-.link page 1
+.link group 2
 
 
 ;---------------------------------------------------------------------------
@@ -37,12 +34,12 @@
 	SuspendPlayback:       .byt 0  ;$E4
 	ChannelsRemaining:     .byt 0  ;$E5
 	PriorityTemp = ChannelsRemaining ;alias
-	RegisterOffsetUnknown: .byt 0 ; $E6 ; mirrors the purpose of $EB? I don't understand...
+	;RegisterOffsetUnknown: .byt 0 ; $E6 ; no longer needed
 	SpeedUpFactor:         .byt 0 ; $E7 ; If 2, each note is played at half length!
 	FadingSpeed:           .byt 0 ; $E8 ; Set by Command $FD
 	VolumeFadeStrength:    .byt 0 ; $E9 ; Controlled by FadingSpeed
 	SoundFrameCounter:     .byt 0 ; $EA
-	CurrentChannelRegisterOffset: .byt 0 ; $EB
+	;CurrentChannelRegisterOffset: .byt 0 ; $EB ; no longer needed
 	CurChanDataPtr:        .word 0 ; $EC ; EC,ED   it's an index to AudioStatusBuffer
 	CurrentChannelNumber:  .byt 0 ; $EE
 	UnknownEF:             .byt 0 ; $EF
@@ -114,9 +111,8 @@ AudioStatusBuffer:    .nop 4*AudioChannelStatusSize ; $500..$57C
 ;   Fourth byte:
 ;     Tremolo speed? 0=disabled
 
-
 .zero
-	Var41:		.byt 0 ;At $41 If this address has low bit set, the engine pauses music (read only)
+	MusicPaused:		.byt 0 ;At $41 If this address has low bit set, the engine pauses music (read only)
 
 .text
 
@@ -145,9 +141,8 @@ SoundCodeCommandFD ; FADE IN (-Y) OR FADE OUT (+Y)
 SoundCodeCommandFE_FF:
   beq SoundCodeCommandFE
 SoundCodeCommandFF ; STOP MUSIC
-  jsr ResetChanDataPtr
-  jmp StopMusic
-
+  jsr StopMusic
+  ;fallthrough
 ResetChanDataPtr:
   lda #$01                : sta SuspendPlayback
   lda #<AudioStatusBuffer : sta CurChanDataPtr
@@ -240,7 +235,7 @@ StartMusicTrack:
   lda (SongDataPointer),y : sta VibratoBufferPointer+1
 
 ; Let music callback play again
-  lda #$00 : sta SuspendPlayback
+  lda #0 : sta SuspendPlayback
   rts
 
 
@@ -262,7 +257,7 @@ StartSFX: ; at 80BB
 ; Suspend playback so the sound code won't interrupt us
   jsr ResetChanDataPtr
   
-  ldx #$00
+  ldx #0
   
   ; Set SFX_Addr as SongDataPointer+2
   lda #$02
@@ -287,7 +282,6 @@ StartSFX: ; at 80BB
 
 ; Loop thru all channels
   lda #$04 : sta ChannelsRemaining
-  lda #$02 : sta RegisterOffsetUnknown
 
 --
   pla
@@ -302,11 +296,6 @@ StartSFX: ; at 80BB
   jsr UpdateChannelUsedBySFX
 + jsr SFX_NextChannel
 
-  lda #$04
-  clc
-  adc RegisterOffsetUnknown
-  sta RegisterOffsetUnknown
-
   dec ChannelsRemaining
   bne --
 
@@ -318,7 +307,7 @@ StartSFX: ; at 80BB
 
 
 ; Let music callback play again
-  lda #$00 : sta SuspendPlayback
+  lda #0 : sta SuspendPlayback
   rts
 
 
@@ -330,7 +319,6 @@ ResetSoundSystem ;at 813A (diff so far: 5 bytes)
   sta Priorities
 
   lda #4 : sta ChannelsRemaining
-  lda #2 : sta RegisterOffsetUnknown
 
 --
   lda SFX_ChannelUsage : lsr : bcc +
@@ -338,17 +326,13 @@ ResetSoundSystem ;at 813A (diff so far: 5 bytes)
   jsr UpdateChannelUsedBySFX
 + jsr SFX_NextChannel
 
-  lda #4
-  clc
-  adc RegisterOffsetUnknown
-  sta RegisterOffsetUnknown
   dec ChannelsRemaining
   bne --
 
-  lda #$00
+  lda #0
   sta SFX_ChannelUsage
   sta UnknownEF
-  lda #$00
+  lda #0
   sta SuspendPlayback
   rts
 
@@ -356,18 +340,19 @@ ResetSoundSystem ;at 813A (diff so far: 5 bytes)
 ;Loads a SFX-related pointer(?)
 UpdateChannelUsedBySFX ; at 816C
   jsr LoadChanDataPtr_X
-  lda AudioStatusBuffer+CHNVAR_NotePeriodWord+0,x   ;If NotePeriodWord is nonzero?
-  ora AudioStatusBuffer+CHNVAR_NotePeriodWord+1,x
-  bne ReloadVibrato
-  ldy ChannelsRemaining       ;NotePeriodWord was zero.
-  ldx RegisterOffsetUnknown
-  jsr MuteChannel
-  jsr LoadChanDataPtr_X
+  pha
+   lda AudioStatusBuffer+CHNVAR_NotePeriodWord+0,x   ;If NotePeriodWord is nonzero?
+   ora AudioStatusBuffer+CHNVAR_NotePeriodWord+1,x
+   bne pla_ReloadVibrato
+
+   ldy ChannelsRemaining       ;NotePeriodWord was zero.
+   jsr HW_MuteChannel_WithY
+
+  pla
   lda AudioStatusBuffer+CHNVAR_MusicDataAddr+0,x   ;Reads MusicDataAddr
   ora AudioStatusBuffer+CHNVAR_MusicDataAddr+1,x
   bne ReloadVibrato
   rts
-
 
 ; This routine copies the data from the currently selected
 ; vibrato buffer of the music track into the 14..17 range
@@ -375,6 +360,8 @@ UpdateChannelUsedBySFX ; at 816C
 ;
 ; It is the same region as updated by SFXCMD_SetVibratoBuffer.
 ;
+pla_ReloadVibrato:
+   pla
 ReloadVibrato ; at 81C4 - 8 bytes ahead here
    ldy #CHNVAR_VibratoDefs
    lda (CurChanDataPtr),y
@@ -397,7 +384,7 @@ CopySelectedVibratoData ;at 88E1
   iny
   cpy #CHNVAR_VibratoBuffer+4
   beq +
-  inc TempF4 : bne -
+  inc TempF4+0 : bne -
   inc TempF4+1 : bne -
 + rts
 
@@ -408,25 +395,18 @@ StopMusic ;at 818C ;7 bytes ahead here
   and #$F0
   sta Priorities
 
-  lda #$00
+; Loop thru all channels
+  lda #0
   sta SpeedUpFactor
   sta FadingSpeed
-
-; Loop thru all channels
-  lda #$04
-  sta ChannelsRemaining
---
-  jsr LoadChanDataPtr_X         ;Zeroes MusicDataAddr
-  lda #$00
-  sta AudioStatusBuffer+0,x
-  sta AudioStatusBuffer+1,x
-
-  jsr NextChannelPtr
-  dec ChannelsRemaining
-  bne --
-
-  lda #$00
+  tax
+  jsr +
+  inx
   sta SuspendPlayback
++ sta AudioStatusBuffer+(AudioChannelStatusSize*0)+CHNVAR_MusicDataAddr,x
+  sta AudioStatusBuffer+(AudioChannelStatusSize*1)+CHNVAR_MusicDataAddr,x
+  sta AudioStatusBuffer+(AudioChannelStatusSize*2)+CHNVAR_MusicDataAddr,x
+  sta AudioStatusBuffer+(AudioChannelStatusSize*3)+CHNVAR_MusicDataAddr,x
   rts
 
 
@@ -439,7 +419,6 @@ ClearSFXRAM ;Zeroes the region $10..$1E of the current channel.
   dey
   bne -
   rts
-
 
 
 ; Rotate SFX_ChannelUsage right without involving carry
@@ -466,18 +445,20 @@ SFX_FirstChannel ; at 8219
   rts
 
 
-;
 ; Mutes channel Y by setting period to #0 (or disabling it if noise)
-;
-; X must be set to 4 * Y + 2
-;
-
-MuteChannel ;8222 - still 8 bytes ahead here
-  cpy #$01    ; if chn# = 1 then disable noise channel
-  beq +
-  lda #$00
-  sta $4000,x
-  sta $4001,x
+HW_MuteChannel ;at 9508
+  ldy CurrentChannelNumber
+HW_MuteChannel_WithY:
+  cpy #1
+  beq +       ; if chn# = (last channel) then disable noise channel
+  ; X = (4-Y)*4 + 2
+  ; X = 16 - Y*4 + 2
+  ; X = 18 - Y*4
+  ldx ChannelOffsets-1,y
+  ; Write $0000 as the period value of the channel
+  lda #0
+  sta $4002,x
+  sta $4003,x
   rts
 + lda #$07    ; Disable noise channel
   sta $4015
@@ -493,9 +474,6 @@ SoundCodePlay = UpdateSound ; at $8000
 +
   lda #<AudioStatusBuffer : sta CurChanDataPtr+0
   lda #>AudioStatusBuffer : sta CurChanDataPtr+1
-; Set sounds registers offset to 0
-  lda #$00
-  sta CurrentChannelRegisterOffset
 ; Loop thru all channels
   lda #$04
   sta CurrentChannelNumber
@@ -510,16 +488,16 @@ UpdateSound_ChannelLoop:
   bcc +
   jsr SFX_TickChannel
 +
-; Jump if Var41 has low bit set
-  lda Var41
+; Jump if MusicPaused has low bit set
+  lda MusicPaused
   lsr
   bcc +
   jmp ++
 +
 ; Skip processing if music address = 0
   jsr LoadChanDataPtr_X
-  lda AudioStatusBuffer+0,x
-  ora AudioStatusBuffer+1,x
+  lda AudioStatusBuffer+CHNVAR_MusicDataAddr+0,x
+  ora AudioStatusBuffer+CHNVAR_MusicDataAddr+1,x
   beq ++
   inc AudioStatusBuffer+CHNVAR_VolumeCurvePosition,x ;adds 1 to VolumeCurvePosition
   jsr MUS_TickChannel
@@ -529,11 +507,7 @@ UpdateSound_ChannelLoop:
   lda UnknownEF
   lsr
   bcs +++
-   ldx CurrentChannelRegisterOffset
-   inx
-   inx
-   ldy CurrentChannelNumber
-   jsr MuteChannel
+   jsr HW_MuteChannel
 +++
 ; Rotate UnknownEF right without involving carry
   lsr UnknownEF
@@ -545,13 +519,7 @@ UpdateSound_ChannelLoop:
   dec CurrentChannelNumber
   beq UpdateSound_AllChannelsDone
   
-  clc
-  lda CurrentChannelRegisterOffset
-  adc #4
-  sta CurrentChannelRegisterOffset
-  
   jsr NextChannelPtr
-
   jmp UpdateSound_ChannelLoop
 
 UpdateSound_AllChannelsDone:
@@ -570,7 +538,7 @@ UpdateSound_AllChannelsDone:
   bne ++
   lda FadingSpeed
   bmi +
-  lda #$00
+  lda #0
   sta FadingSpeed
 +
   lda #$0F
@@ -634,7 +602,7 @@ IterateNote ;at 82EC
   ldy #CHNVAR_VolumeCurveLength
   lda (CurChanDataPtr),y
   tax
-  and #$7f
+  and #$7F
   beq DoneVolumeCurve
 
 ; This part omitted if channel is triangle or VolumeCurveLength had no low 7 bits
@@ -743,7 +711,8 @@ ProcessTremolo ;volume vibrato
    ora TempF4
    sta TempF4
 +
-  ldx CurrentChannelRegisterOffset
+  ldy CurrentChannelNumber
+  ldx ChannelOffsets-1,y
   lda TempF4
   sta $4000,x ;Write duty,decaysettings,length_disable
 
@@ -766,6 +735,8 @@ ProcessVibrato
     bpl +
     dex
   + iny ;Either NotePeriodWord or NotePeriodWordSFX
+    ; Add the word A:X into that word
+  
     clc
     adc (CurChanDataPtr),y
     sta (CurChanDataPtr),y
@@ -852,11 +823,11 @@ ProcessVibrato
 
   ldy #CHNVAR_PeriodWord+1
   lda (CurChanDataPtr),y : ldy TempF4+1 : adc (CurChanDataPtr),y
-  tay
+  sta TempF4
 
   ; X,Y now contains (NotePeriodWord + Period)
 
-  lda #$01
+  lda #1
   cmp CurrentChannelNumber
   bne +
 
@@ -875,41 +846,25 @@ ProcessVibrato
     ora TempF4
     tax
     ldy #$00
+    sty TempF4
   +
-  ; Write period X,Y (hi only written if changed)
+  ; Write period X,TempF4 (hi only written if changed)
   txa
-  ldx CurrentChannelRegisterOffset
-  inx
-  inx
-  sta $4000,x     ;write wavelength low byte
-  tya
+
+  ldy CurrentChannelNumber
+  ldx ChannelOffsets-1,y
+  sta $4002,x     ;write wavelength low byte
+
+  lda TempF4
   ldy #CHNVAR_PeriodHiOld
   cmp (CurChanDataPtr),y
   bne +
   rts
-+
-  sta (CurChanDataPtr),y
++ sta (CurChanDataPtr),y
   ora #$08
-  sta $4001,x     ;write wavelength high byte
+  sta $4003,x     ;write wavelength high byte
   rts
 
-
-DisableChannel ;at 9508
-  ldy #$01
-  cpy CurrentChannelNumber
-  bne +
-  lda #$07    ; Disable noise channel
-  sta $4015
-  rts
-+
-; Write $0000 as the period value of the channel
-  lda #$00
-  ldx CurrentChannelRegisterOffset
-  inx
-  inx
-  sta $4000,x
-  sta $4001,x
-  rts
 
 ResetPitch
   ; Input: TempF4 = index to DutyCycle or DutyCycleSFX
@@ -999,6 +954,7 @@ SFX_TickChannel ;at 956D
 
 ReadDataSFX ;at 8592
   jsr ReadByteSFX
+  tax
   asl
   bcs +
   jmp CMDSFX_Select
@@ -1009,6 +965,7 @@ ReadDataSFX ;at 8592
   bne CMDSFX_SetNotePeriodSFX
 CMDSFX_Exec_80
   jsr ReadByteSFX
+  tax
   jmp ResetPitchButSavePeriodHiOld
 
 CMDSFX_SetNotePeriodSFX ;at 85A8; Byte was 8x
@@ -1028,7 +985,7 @@ CMDSFX_SetNotePeriodSFX ;at 85A8; Byte was 8x
   sta TempF4
 
   jsr ResetPitch
-  jmp DisableChannel
+  jmp HW_MuteChannel
 
 CMDSFX_Select
   jsr DoCalculatedGoto
@@ -1078,7 +1035,7 @@ CMDSFX_SetVolumeAndEnv ;at 85F5
 
 CMDSFX_Loop ;at 860F
   jsr ReadByteSFX
-  txa
+  tax
   beq +
   cpx SFX_LoopCounter
   beq ++
@@ -1094,15 +1051,15 @@ CMDSFX_Loop ;at 860F
   lda #$00
   sta SFX_LoopCounter
 
-  lda #$02
+  ; Increment the word at SFX_Addr by 2
+  lda #2
   clc
   adc SFX_Addr+0
   sta SFX_Addr+0
-  lda #$00
-  adc SFX_Addr+1
-  sta SFX_Addr+1
+  bcc +
+  inc SFX_Addr+1
++ jmp ReadDataSFX
 
-  jmp ReadDataSFX
 
 CMDSFX_SetVibratoBuffer ;at 8640
   lda #CHNVAR_VibratoBuffer
@@ -1121,11 +1078,11 @@ CMDSFX_SetVibratoBuffer ;at 8640
 CMDSFX_EndOfData ;at 8656
   lda SFX_Addr+0 ;decrease SFX_Addr by 1
   sec
-  sbc #$01
+  sbc #1
   sta SFX_Addr+0
-  lda SFX_Addr+1
-  sbc #$00
-  sta SFX_Addr+1
+  bcs +
+  dec SFX_Addr+1
++
 
 ; Set priority to zero
   lda Priorities
@@ -1136,7 +1093,7 @@ CMDSFX_EndOfData ;at 8656
   sta SFX_ChannelUsage
 
   lda UnknownEF
-  and #$fe
+  and #$FE
   sta UnknownEF
 
   ldy #CHNVAR_NotePeriodWord
@@ -1145,11 +1102,7 @@ CMDSFX_EndOfData ;at 8656
   ora (CurChanDataPtr),y
   bne +
 
-  ldx CurrentChannelRegisterOffset ;NotePeriodWord was zero.
-  inx
-  inx
-  ldy CurrentChannelNumber
-  jsr MuteChannel
+  jsr HW_MuteChannel               ;NotePeriodWord was zero.
 
   ldy #CHNVAR_MusicDataAddr+0      ;Reads MusicDataAddr
   lda (CurChanDataPtr),y
@@ -1171,56 +1124,49 @@ CMDSFX_EndOfData ;at 8656
 
 
 ;
-; Reads one SFX byte and increments SFX addr
-;
-
+; Reads one SFX byte and increments SFX addr. Returns byte in A.
 ReadByteSFX ;at 86A0
   ldy #0
   lda (SFX_Addr),y
-  tax
-  lda #1
-  clc
-  adc SFX_Addr+0
-  sta SFX_Addr+0
-  lda #0
-  adc SFX_Addr+1
-  sta SFX_Addr+1
-  txa
-  rts
+  inc SFX_Addr+0
+  bne +
+  inc SFX_Addr+1
++ rts
 
 MUS_TickChannel ;at 96B4
   lda SpeedUpFactor
   beq MUS_TickChannel_Do
+  ; If SpeedUpFactor was nonzero,
+  ; repeat MUS_TickChannel_Do as many times as indicated.
 - pha
    jsr MUS_TickChannel_Do
   pla
   sec : sbc #1 : bne -
   rts
+
 ; If SpeedUpFactor > 0, this function will be evaluated many times!
 MUS_TickChannel_Do
   ldy #CHNVAR_LoopCounter  ; If the high bit of LoopCounter is set, the notes
   lda (CurChanDataPtr),y   ; will be played in 2/3 length. (Triplet speed)
-  asl                    ; That is, delays are 2/3 of what they were.
-  bcc +
+  bpl +                    ; That is, delays are 2/3 of what they were.
   lda SoundFrameCounter                               ; $EA
   and #$01
   beq +
+  ; Extra call on odd frames
   jsr +
-+
-  jsr LoadChanDataPtr_X
+
++ jsr LoadChanDataPtr_X
   lda AudioStatusBuffer+CHNVAR_NoteLengthWord+0,x
   ora AudioStatusBuffer+CHNVAR_NoteLengthWord+1,x
   beq ++                 ;If current note length is 0000?
 
-; Wasn't 0000
-  ldy #CHNVAR_NoteLengthWord+0
-  lda (CurChanDataPtr),y        ;lo byte          ;NoteLengthWord -= 4
+; Wasn't 0000. Decrement by 4
+  lda AudioStatusBuffer+CHNVAR_NoteLengthWord+0,x
   sec : sbc #4
-  sta (CurChanDataPtr),y : iny
-  lda (CurChanDataPtr),y        ;hi byte
-  sbc #0
-  sta (CurChanDataPtr),y : dey
-  ora (CurChanDataPtr),y        ;lo byte          ; Is the note length now 0000?
+  sta AudioStatusBuffer+CHNVAR_NoteLengthWord+0,x
+  bcs +
+  dec AudioStatusBuffer+CHNVAR_NoteLengthWord+1,x
++ ora AudioStatusBuffer+CHNVAR_NoteLengthWord+1,x ; Is the note length now 0000?
   beq ++
   lda AudioStatusBuffer+CHNVAR_NotePeriodWord+0,x ; Nope, it's not 0000
   ora AudioStatusBuffer+CHNVAR_NotePeriodWord+1,x ; Check if NotePeriodWord == 0000
@@ -1232,48 +1178,117 @@ MUS_TickChannel_Do
   lda AudioStatusBuffer+CHNVAR_LoopCounter,x ; Note length was 0.
   and #$7F                                   ; Remove the high bit of LoopCounter
   sta AudioStatusBuffer+CHNVAR_LoopCounter,x ; And read more instructions
+  ;fallthrough
 
 ReadDataMUS ;at 8706
   jsr ReadByteMUS
-
-  and #$f0
-  bne +
-  jmp CMDMUS_Select
-+
-  cmp #$20
+  and #$F0
   bne +
 
-CMDMUS_20 ;at 8714
+  ; It was 00-0F
+  jsr DoCalculatedGoto
+.word CMDMUS_SetSpeed            ;cmd 0
+.word CMDMUS_SetVibratoCtrl      ;cmd 1
+.word CMDMUS_SetDutyCycle        ;cmd 2
+.word CMDMUS_SetVolumeAndEnv     ;cmd 3
+.word CMDMUS_Loop                ;cmd 4
+.word CMDMUS_SetNoteBaseOffset   ;cmd 5
+.word CMDMUS_PlayNoteExtraLength ;cmd 6
+.word CMDMUS_SetVolumeCurve
+.word CMDMUS_SetVibratoIndex
+.word CMDMUS_EndOfData
+
++ cmp #MUSCMD_SetNoteDelay
+  beq CMDMUS_SetNoteDelay
+
++ cmp #MUSCMD_TripletSpeed
+  bne CMDMUS_PlayNoteRegularLength
+
+CMDMUS_TripletSpeed:
+  ; It was 30-3F.
+  ; Save the triplet speed status.
+  lda #$80
+  ldy #CHNVAR_LoopCounter ; Set the high bit of LoopCounter
+  ora (CurChanDataPtr),y  ; It will be handled at MUS_TickChannel_Do
+  sta (CurChanDataPtr),y
+  bne ReadDataMUS
+
+CMDMUS_SetNoteDelay:
+  ; It was 20-27 (or 28-2F, which works identically to 20-27).
+  ; Handle set-notedelay command
   txa
-  and #$07    ; These go to high 3 bits of VibratoDefs
   pha
-  jsr ReadDataMUS
+   jsr ReadDataMUS
+   ; Reads next note, then post-edits
+   ; it by setting the delay in vibrato flags.
   pla
-  jmp CMDMUS_20_End
-+
-  cmp #$30
-  bne +
-  jmp CMDMUS_TripletSpeed
-+
+  ror
+  ror
+  ror
+  ror
+  and #$E0        ; Set high 3 bits from param
+  sta TempF4
+  ldy #CHNVAR_VibratoDefs
+  lda (CurChanDataPtr),y
+  and #$1F
+  ora TempF4
+  sta (CurChanDataPtr),y
+  rts
 
-; It's a note command(?)...
-;
-; X = the note. It is either in range 10..1F or 40..FF.
+CMDMUS_PlayNoteExtraLength:
+  jsr ReadByteMUS
+  sec
+  bcs SetNoteLengthWithTickSpeed_SetupTone
 
-; Handles MUS notes
-; Get the note length
+; It was 10-1F (carry clear) or 40-FF (carry set). It's a note command. X = the note.
+CMDMUS_PlayNoteRegularLength:
   txa
-  rol ;rol is like asl, but instead of 0 it feeds from Carry-flag.
-  rol
-  rol
-  rol
-  and #$07 ; .1..4567.. (huh?)
+  clc
+  ;fallthru
+SetNoteLengthWithTickSpeed_SetupTone:
+  ; Get the note length
+  ;   ;76543210 c
+  rol ;6543210c 7
+  rol ;543210c7 6
+  rol ;43210c76 5
+  rol ;3210c765 4
+  and #15 ; got the 3 high bits of X. 4*ROL is faster than 5*LSR.
+  ;         Because X was 10..1F or 40..FF,
+  ;         A can be 0..7 except 1
   tay
-  lda NoteLengths_1,y  ; One of: 0,8,16,32,64
+  lda NoteLengths,y  ; One of: 0,2,4,8,16,32,64
+  ; or if carry was set:       0,3,6,12,24,48,96
 
-; NoteLength <- A * TickSpeed
-  jsr SetNoteLengthWithTickSpeed
+  ; Sets CHNVAR_NoteLengthWord as param * CHNVAR_TickSpeed
+  ; Uses TempF4..$F5 as temps, preserves X
+  sta TempF4
+  stx TempF4+1
 
+  ldy #CHNVAR_TickSpeed
+  lda (CurChanDataPtr),y
+  tay
+
+  ; Set X:A = Y*TempF4
+
+  lda #$00
+  tax
+  clc
+- adc TempF4
+  bcc +
+  inx
+  clc
++ dey
+  bne -
+
+  ; Write X:A to NoteLengthWord
+  ldy #CHNVAR_NoteLengthWord
+  sta (CurChanDataPtr),y
+  iny
+  txa
+  sta (CurChanDataPtr),y
+  
+  ldx TempF4+1
+  ;fallthru
 /*
 
 If (VibratoDefs & 0xE0) , i.e. high 3 bits
@@ -1296,31 +1311,34 @@ else
   NotePeriodWord = A,x
   ....
 }
-
-
  */
 SetupTone ;at 8734 (12 bytes ahead)
   ldy #CHNVAR_VibratoDefs
   lda (CurChanDataPtr),y
   and #$E0
   beq ++
+  ; If there was a note delay active,
+  ; subtract 1 frame from the delay
   sec
   sbc #$20
   sta TempF4
+  ; and save it
   lda (CurChanDataPtr),y
   and #$1f
   ora TempF4
   sta (CurChanDataPtr),y
+  ;
   lda UnknownEF
   lsr
   bcc +
   rts
-+
-  jmp ResetPitchButSavePeriodHiOld
-++
++ jmp ResetPitchButSavePeriodHiOld
+
+++ ; Note was not delayed
   txa
   and #$1f
   bne +
+  ; Zero? Set A=X=0
   tax
   jmp ++
 +
@@ -1328,9 +1346,11 @@ SetupTone ;at 8734 (12 bytes ahead)
   cpy CurrentChannelNumber
   bne +
     ; This part is done for noise channel.
-    ldx #$00
+    ldx #0
     jmp ++
   + ; This part is done for non-noise channels.
+    ;
+    ; TempF4(word) = A*2 + NoteBaseOffset[this channel]
     asl
     ldy #CHNVAR_NoteBaseOffset
     clc
@@ -1351,56 +1371,15 @@ SetupTone ;at 8734 (12 bytes ahead)
   iny
   txa
   sta (CurChanDataPtr),y
-  ldy #CHNVAR_VolumeCurveLength
-  lda (CurChanDataPtr),y    ; TempF4 <- VolumeCurveLength
-  sta TempF4
-  and #$7f
-  beq +
-  jsr ResetVolumeCurvePosition          ; Called if VolumeCurveLength had 7 low bits
-+
+  jsr ResetVolumeCurvePosition
   lda UnknownEF
   lsr
   bcc +
   rts
-+
-  lda #$0C
-  sta TempF4
++ lda #$0C
+  sta TempF4 ; param to ResetPitch
   jsr ResetPitch
-  jmp DisableChannel
-
-CMDMUS_20_End ;at 87A2
-  ror
-  ror
-  ror
-  ror
-  and #$E0        ; Set high 3 bits from param
-  sta TempF4
-  ldy #CHNVAR_VibratoDefs
-  lda (CurChanDataPtr),y
-  and #$1F
-  ora TempF4
-  sta (CurChanDataPtr),y
-  rts
-
-CMDMUS_TripletSpeed ;at 97B5
-  lda #$80
-  ldy #CHNVAR_LoopCounter ; Set the high bit of LoopCounter
-  ora (CurChanDataPtr),y  ; It will be handled at MUS_TickChannel_Do
-  sta (CurChanDataPtr),y
-  jmp ReadDataMUS
-
-CMDMUS_Select ;at 87C0
-  jsr DoCalculatedGoto
-.word CMDMUS_SetSpeed            ;cmd 0
-.word CMDMUS_SetVibratoCtrl      ;cmd 1
-.word CMDMUS_SetDutyCycle        ;cmd 2
-.word CMDMUS_SetVolumeAndEnv     ;cmd 3
-.word CMDMUS_Loop                ;cmd 4
-.word CMDMUS_SetNoteBaseOffset   ;cmd 5
-.word CMDMUS_PlayNoteExtraLength ;cmd 6
-.word CMDMUS_SetVolumeCurve
-.word CMDMUS_SetVibratoIndex
-.word CMDMUS_EndOfData
+  jmp HW_MuteChannel
 
 ; Set tickspeed for this channel
 CMDMUS_SetSpeed ;at 87D7
@@ -1446,7 +1425,7 @@ CMDMUS_SetVolumeAndEnv ;at 87FB
 
 CMDMUS_Loop ;at 8815
   jsr ReadByteMUS
-  txa
+  tax
   beq + ;Loop forever?
 ; Loop for a specified number of times...
   ldy #CHNVAR_LoopCounter
@@ -1480,7 +1459,7 @@ CMDMUS_Loop ;at 8815
   ; Zero the loop-counter
   lda (CurChanDataPtr),y : and #$80 : sta (CurChanDataPtr),y
 
-  ; Skip the address
+  ; Skip the address (increment the address by 2)
   ldy #CHNVAR_MusicDataAddr+0
   lda #$02
   clc
@@ -1508,21 +1487,8 @@ CMDMUS_SetNoteBaseOffset ;at 885D
   adc TempF4+1 : sta (CurChanDataPtr),y
   jmp ReadDataMUS
 
-CMDMUS_PlayNoteExtraLength ;887A
-  jsr ReadByteMUS
-
-; Y = upper 3 bits of music data byte in lower 3 bits
-  rol
-  rol
-  rol
-  rol
-  and #$07
-  tay
-
-  lda NoteLengths_1half,y
-  jsr SetNoteLengthWithTickSpeed
-  jmp SetupTone
-
+Get3highbits:
+  rts
 
 CMDMUS_SetVolumeCurve ;at 888D
 ; First byte goes into VolumeCurveLength and TempF4
@@ -1530,38 +1496,31 @@ CMDMUS_SetVolumeCurve ;at 888D
   jsr ReadByteMUS
   ldy #CHNVAR_VolumeCurveLength
   sta (CurChanDataPtr),y
-  pha
-   jsr ReadByteMUS
-   ldy #CHNVAR_VolumeCurveStrength
-   sta (CurChanDataPtr),y
-  pla
-  sta TempF4
-
-  and #$7f
-  beq +
+  jsr ReadByteMUS
+  ldy #CHNVAR_VolumeCurveStrength
+  sta (CurChanDataPtr),y
   jsr ResetVolumeCurvePosition
-+
   jmp ReadDataMUS
 
 
-ResetVolumeCurvePosition ;at 88A9
-  lda #$00
+ResetVolumeCurvePosition:
+  ldy #CHNVAR_VolumeCurveLength
+  lda (CurChanDataPtr),y        ; load VolumeCurveLength
+  tax
+  and #$7F ; Ignore if 7 low bits are clear
+  beq ++
+
+  lda #0
   ldy #CHNVAR_VolumeCurvePosition
-  sta (CurChanDataPtr),y     ; VolumeCurvePosition <- $00
-  lda TempF4
-  bpl +
-  lda #$0F
-  jmp ++
-+
-  lda #$00
-++
-  sta TempF4
-  ldy #CHNVAR_VolumeCurveStrength  ; VolumeCurvePosition <- (high bits) | $00  \_ either one
-  lda (CurChanDataPtr),y           ; VolumeCurvePosition <- (high bits) | $0F  /  of these.
-  and #$f0
-  ora TempF4
-  sta (CurChanDataPtr),y
-  rts
+  sta (CurChanDataPtr),y           ; VolumeCurvePosition <- $00
+  ldy #CHNVAR_VolumeCurveStrength  ; VolumeCurveStrength <- (high bits) | $00  \_ either one
+  lda (CurChanDataPtr),y           ; VolumeCurveStrength <- (high bits) | $0F  /  of these.
+  and #$F0
+  cpx #$80 ;if Length was negative, set low bits.
+  bcc +
+  ora #$0F
++ sta (CurChanDataPtr),y
+++ rts
 
 
 CMDMUS_SetVibratoIndex ;at 88C7 Sets low 5 bits of VibratoDefs
@@ -1594,75 +1553,48 @@ CMDMUS_EndOfData ;at 8917
   lsr
   bcc +
   rts
-+
-  ldx CurrentChannelRegisterOffset
-  inx
-  inx
-  ldy CurrentChannelNumber
-  jmp MuteChannel
++ jmp HW_MuteChannel
 
-; Read music data?...
 
+; Read music data. Returns same byte in both A,X
 ReadByteMUS ;at 8935
   ldy #CHNVAR_MusicDataAddr+0
+
+  ; Load the current pointer into TempF4
+  ; and increment the pointer by 1.
   lda (CurChanDataPtr),y
   sta TempF4
+  clc
+  adc #1
+  sta (CurChanDataPtr),y
+  
   iny
   lda (CurChanDataPtr),y
   sta TempF4+1
+  adc #0
+  sta (CurChanDataPtr),y
+  
+  ; Load byte, saveinto X
+#if CHNVAR_MusicDataAddr==0
   dey
-
+#else
+  ldy #0
+#endif
   lda (TempF4),y
   tax
-  lda #$01
-  clc
-  adc TempF4
-  sta (CurChanDataPtr),y
-  lda #$00
-  adc TempF4+1
-  iny
-  sta (CurChanDataPtr),y
-  txa
   rts
 
 
-; Sets CHNVAR_NoteLengthWord as param * CHNVAR_TickSpeed
-; Uses TempF4..$F5 as temps
-
-SetNoteLengthWithTickSpeed ;at 8954
-  sta TempF4
-  lda #$00
-  sta TempF4+1
-
-  ldy #CHNVAR_TickSpeed
-  lda (CurChanDataPtr),y
-  tay
-
-  lda #$00
--
-  clc
-  adc TempF4
-  bcc +
-  inc TempF4+1
-+
-  dey
-  bne -
-
-  ldy #CHNVAR_NoteLengthWord
-  sta (CurChanDataPtr),y
-  iny
-  lda TempF4+1
-  sta (CurChanDataPtr),y
-  rts
 
 .data
-.link page 1
+.link group 2
 
-NoteLengths_1:
+NoteLengths:
 	.byt 0,0,2,4,8,16,32,64
-
-NoteLengths_1half:
 	.byt 0,0,3,6,12,24,48,96
+
+ChannelOffsets:
+	.byt 12,8,4,0
 
 CMDMUS_SetNoteBaseOffsettable: ; at 8985
 	; C# C  B  A#  |  F  F# G  G# | C  C# D  D#
