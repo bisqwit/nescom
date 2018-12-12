@@ -24,7 +24,7 @@ LD=$(CXX)
 
 DEPDIRS =
 
-CXX += -std=c++1z
+CXX += -std=c++17
 
 OPTIM = -Ofast
 #OPTIM = -Og -fsanitize=address

@@ -3,7 +3,7 @@
 #include <map>
 #include <set>
 
-#include <unistd.h> // Forftruncate
+#include <unistd.h> // For ftruncate
 
 #include "dataarea.hh"
 #include "assemble.hh"
@@ -16,6 +16,10 @@ bool fix_jumps = false;
 extern bool assembly_errors;
 
 #define PROGNAME "nescom"
+
+#if !defined(__cpp_structured_bindings) || (__cpp_structured_bindings < 201606)
+ #error "Your compiler is too old. You need a compiler that supports structured bindings (such as GCC-7 or newer)."
+#endif
 
 class Object::Segment
 {

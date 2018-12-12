@@ -867,15 +867,16 @@ ProcessVibrato
 
 
 ResetPitch
-  ; Input: TempF4 = index to DutyCycle or DutyCycleSFX
+  ; Input: TempF4 = CHNVAR_DutyCycleSFX
+  ;              or CHNVAR_DutyCycle
+  ;        will be written to TremoloVar2
   ;
   jsr LoadChanDataPtr_X
   lda AudioStatusBuffer+CHNVAR_VibratoBuffer+0,x
   and #$7F
   sta AudioStatusBuffer+CHNVAR_VibratoBuffer+0,x
   lda AudioStatusBuffer+CHNVAR_VibratoBuffer+2,x
-  asl
-  bcc ++
+  bpl ++
     ldy TempF4
     lda (CurChanDataPtr),y
 
@@ -913,18 +914,15 @@ ResetPitchButSavePeriodHiOld ;at 8548
   rts
 
 
-DoCalculatedGoto ;at 8556
-  txa : asl : tay
-  pla : sta TempF4
+DoComputedGoto ;at 8556
+  pla : sta TempF4+0
   pla : sta TempF4+1
+  txa : sec : rol : tay
+        lda (TempF4),y : tax
   iny : lda (TempF4),y
-  tax
-   iny : lda (TempF4),y
-   sta TempF4+1
+  sta TempF4+1
   stx TempF4
   jmp (TempF4)
-
-
 
 SFX_TickChannel ;at 956D
   lda SFX_FrameWaitCount
@@ -955,24 +953,33 @@ SFX_TickChannel ;at 956D
 ReadDataSFX ;at 8592
   jsr ReadByteSFX
   tax
-  asl
-  bcs +
-  jmp CMDSFX_Select
-+
+  bmi +
+
+  ; 00-7F
+  jsr DoComputedGoto
+.word CMDSFX_SetFrameWaitCount
+.word CMDSFX_SetVibratoCtrlSFX
+.word CMDSFX_SetDutyCycle
+.word CMDSFX_SetVolumeAndEnv
+.word CMDSFX_Loop
+.word CMDSFX_SetVibratoBuffer
+.word CMDSFX_EndOfData
+
++ ; 80-FF
   txa
   and #$0F
   cmp #$0F
-  bne CMDSFX_SetNotePeriodSFX
-CMDSFX_Exec_80
+  bne +
+
+  ; xF where X >= $8
   jsr ReadByteSFX
   tax
   jmp ResetPitchButSavePeriodHiOld
 
-CMDSFX_SetNotePeriodSFX ;at 85A8; Byte was 8x
-; The low 3 bits will be written to NotePeriodWordSFX+1
-; And the following byte will be written to NotePeriodWordSFX+0
-
-  and #$07
+  ; 8x where X is not $F
+  ; The low 3 bits will be written to NotePeriodWordSFX+1
+  ; And the following byte will be written to NotePeriodWordSFX+0
++ and #$07
   sta TempF4
   jsr ReadByteSFX
 
@@ -981,21 +988,11 @@ CMDSFX_SetNotePeriodSFX ;at 85A8; Byte was 8x
   iny
   lda TempF4
   sta (CurChanDataPtr),y
+
   lda #CHNVAR_DutyCycleSFX
   sta TempF4
-
   jsr ResetPitch
   jmp HW_MuteChannel
-
-CMDSFX_Select
-  jsr DoCalculatedGoto
-.word CMDSFX_SetFrameWaitCount
-.word CMDSFX_SetVibratoCtrlSFX
-.word CMDSFX_SetDutyCycle
-.word CMDSFX_SetVolumeAndEnv
-.word CMDSFX_Loop
-.word CMDSFX_SetVibratoBuffer
-.word CMDSFX_EndOfData
 
 CMDSFX_SetFrameWaitCount
   jsr ReadByteSFX
@@ -1172,10 +1169,10 @@ MUS_TickChannel_Do
   ora AudioStatusBuffer+CHNVAR_NotePeriodWord+1,x ; Check if NotePeriodWord == 0000
   bne +
   rts
-+ jmp IterateNote           ; No, NotePeriodWord is not 0000.
++ jmp IterateNote                                 ; Neither NoteLengthWord nor NotePeriodWord is 0.
 
 ++
-  lda AudioStatusBuffer+CHNVAR_LoopCounter,x ; Note length was 0.
+  lda AudioStatusBuffer+CHNVAR_LoopCounter,x ; NoteLengthWord was 0.
   and #$7F                                   ; Remove the high bit of LoopCounter
   sta AudioStatusBuffer+CHNVAR_LoopCounter,x ; And read more instructions
   ;fallthrough
@@ -1186,7 +1183,7 @@ ReadDataMUS ;at 8706
   bne +
 
   ; It was 00-0F
-  jsr DoCalculatedGoto
+  jsr DoComputedGoto
 .word CMDMUS_SetSpeed            ;cmd 0
 .word CMDMUS_SetVibratoCtrl      ;cmd 1
 .word CMDMUS_SetDutyCycle        ;cmd 2
@@ -1194,9 +1191,9 @@ ReadDataMUS ;at 8706
 .word CMDMUS_Loop                ;cmd 4
 .word CMDMUS_SetNoteBaseOffset   ;cmd 5
 .word CMDMUS_PlayNoteExtraLength ;cmd 6
-.word CMDMUS_SetVolumeCurve
-.word CMDMUS_SetVibratoIndex
-.word CMDMUS_EndOfData
+.word CMDMUS_SetVolumeCurve      ;cmd 7
+.word CMDMUS_SetVibratoIndex     ;cmd 8 
+.word CMDMUS_EndOfData           ;cmd 9
 
 + cmp #MUSCMD_SetNoteDelay
   beq CMDMUS_SetNoteDelay
@@ -1324,7 +1321,7 @@ SetupTone ;at 8734 (12 bytes ahead)
   sta TempF4
   ; and save it
   lda (CurChanDataPtr),y
-  and #$1f
+  and #$1F
   ora TempF4
   sta (CurChanDataPtr),y
   ;
@@ -1376,7 +1373,7 @@ SetupTone ;at 8734 (12 bytes ahead)
   lsr
   bcc +
   rts
-+ lda #$0C
++ lda #CHNVAR_DutyCycle
   sta TempF4 ; param to ResetPitch
   jsr ResetPitch
   jmp HW_MuteChannel
@@ -1472,33 +1469,30 @@ CMDMUS_Loop ;at 8815
   jmp ReadDataMUS
 
 CMDMUS_SetNoteBaseOffset ;at 885D
-/*
-  NoteBaseOffset = CMDMUS_SetNoteBaseOffsettable + (parameter*2)
- */
-  jsr ReadByteMUS
-  ldx #<CMDMUS_SetNoteBaseOffsettable : stx TempF4
-  ldy #>CMDMUS_SetNoteBaseOffsettable : sty TempF4+1
+  ; NoteBaseOffset = CMDMUS_SetNoteBaseOffsettable + (parameter*2)
+  ;
+  jsr ReadByteMUS  ; param 80-FF is treated just like 00-7F
   asl
   clc
-  ldy #CHNVAR_NoteBaseOffset
-  adc TempF4 : sta (CurChanDataPtr),y
-  lda #$00
-  iny
-  adc TempF4+1 : sta (CurChanDataPtr),y
+  adc #<CMDMUS_SetNoteBaseOffsetTable
+  ldy #CHNVAR_NoteBaseOffset : sta (CurChanDataPtr),y
+
+  lda #>CMDMUS_SetNoteBaseOffsetTable : adc #0
+  iny                        : sta (CurChanDataPtr),y
   jmp ReadDataMUS
 
-Get3highbits:
-  rts
-
 CMDMUS_SetVolumeCurve ;at 888D
-; First byte goes into VolumeCurveLength and TempF4
-; Second byte goes into VolumeCurveStrength
+  ; First byte goes into VolumeCurveLength
+  ; Second byte goes into VolumeCurveStrength
+  ;
   jsr ReadByteMUS
   ldy #CHNVAR_VolumeCurveLength
   sta (CurChanDataPtr),y
+  ;
   jsr ReadByteMUS
   ldy #CHNVAR_VolumeCurveStrength
   sta (CurChanDataPtr),y
+  ;
   jsr ResetVolumeCurvePosition
   jmp ReadDataMUS
 
@@ -1596,7 +1590,7 @@ NoteLengths:
 ChannelOffsets:
 	.byt 12,8,4,0
 
-CMDMUS_SetNoteBaseOffsettable: ; at 8985
+CMDMUS_SetNoteBaseOffsetTable: ; at 8985
 	; C# C  B  A#  |  F  F# G  G# | C  C# D  D#
 	; A  G# G  F#  |  A  A# B  C  | E  F  F# G
 	; F  E  D# D   |  C# D  D# E  | G# A  A# B
