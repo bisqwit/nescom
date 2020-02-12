@@ -1484,7 +1484,7 @@ public:
         // $A2 x CA D0 FD                X-delay  = 2 + x*5 - 1 = x * 5 + 1 cycles
         // $A2 x EA CA D0 FC             X-delay2 = 2 + x*7 - 1 = x * 7 + 1 cycles
         // $A2 x A0 y 88 D0 FD CA D0 FA  YX-delay = 4 + y*5-1 + (x-1) * (5+256*5-1) + 5-1 = 1284*x + y*5 - 1277 cycles
-        // $A0 y A0 x CA D0 FD 88 D0 FA  XY-delay = opposite
+        // $A0 y A2 x CA D0 FD 88 D0 FA  XY-delay = opposite
 
         // $A9 x 85 00 EA C6 00 D0 FB    A-delay = 2+3+ (2+5+3)*x - 1 = 10*x + 4 cycles
 
