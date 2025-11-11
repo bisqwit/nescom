@@ -2942,11 +2942,12 @@ private:
 
                     if(IsTrampolineRoutineWithAppendix(Branch))
                     {
+                        unsigned offset = results[Branch].SpecialTypeParam;
                         unsigned char bank = ROM[Next];
                         KnowledgeAboutMapping guess;
                         guess.guess_for_page[0] = bank*2+0;
                         guess.guess_for_page[1] = bank*2+1;
-                        MarkJumpTable(Next+1, Next+2, 2, 1, {}, 1, guess);
+                        MarkJumpTable(Next+1, Next+2, 2, 1, {}, offset, guess);
                         Mark(Next+3, CertainlyCode, false);
                         Mark(Next+0, CertainlyData, false);
                     }
@@ -3705,9 +3706,11 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         }
         if(tokens[0] == "TrampolineRoutineWithAppendix")
         {
-            if(tokens.size() != 2) goto SyntaxError;
+            if(tokens.size() != 2 && tokens.size() != 3) goto SyntaxError;
             int address = ParseInt(tokens[1]);
-            dasm.SetSpecialType(address, TrampolineRoutineWithAppendix);
+            int offset  = 1; /* Yes, it's inconsistent with JumpTableRoutineWithAppendix. */
+            if(tokens.size() >= 3) offset = ParseInt(tokens[2]);
+            dasm.SetSpecialType(address, TrampolineRoutineWithAppendix, offset);
             continue;
         }
         if(tokens[0] == "MapperChangeRoutine")

@@ -188,6 +188,17 @@
          *        The second parameter defines which register holds the high byte of the
          *        address, and the third parameter for the low byte of the address respectively.
          *
+     *   
+     *   Example: CertainlyCode $3C695 TrampolineCall_TrailingParams
+     *            TrampolineRoutineWithAppendix $3C695 1
+     *   
+     *   Allows trampoline-calling to the bank and address which follow.
+     *    
+     *                       ; call routine at $B118 in bank $6
+     *       $E01E 20 95 C6: jsr TrampolineCall_TrailingParams
+     *       $E021 06:       .byte $06
+     *       $E022 17 B1:    .word (_1B118 -1) ;B118
+     *       $E024 60:       rts
 	 *)
 	special-routine-definition =
 		"DataTableRoutineWithXY"  address
@@ -199,7 +210,8 @@
 	                                                      | "RAM"  address
 	                                                      | "reg"  ("A" | "X" | "Y")
 	                                                      )
-	|	"TrampolineRoutine"       address ("A"|"X"|"Y") ("A"|"X"|"Y") ("A"|"X"|"Y");
+	|	"TrampolineRoutine"       address ("A"|"X"|"Y") ("A"|"X"|"Y") ("A"|"X"|"Y")
+	|   "TrampolineRoutineWithAppendix" address [ integer ];
 
 
 
