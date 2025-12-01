@@ -194,6 +194,7 @@
 	|	"DataTableRoutineWithYX"  address
 	|	"TerminatedStringRoutine" address integer(*width*) integer(*terminator*)
 	|	"TrailerParamRoutine"     address integer(*length*)
+	|	"TrailerParamRoutineWithLength"     address integer(*at*) [integer(*add*)] [integer(*mult*)]
 	|       "JumpTableRoutineWithAppendix" address
 	|       "MapperChangeRoutine"     address [ integer ] ( "const"
 	                                                      | "RAM"  address

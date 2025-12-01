@@ -978,7 +978,7 @@ struct State
     CodeLikelihood Type = Unknown;
 
     SpecialTypes SpecialType = None;
-    unsigned     SpecialTypeParam, SpecialTypeParam2;
+    unsigned     SpecialTypeParam, SpecialTypeParam2, SpecialTypeParam3;
 
     // Code:
     std::set<unsigned/*romptr*/> CalledFrom;
@@ -2514,13 +2514,14 @@ private:
         }
         return res;
     }
-    bool IsTrailerParamRoutineWithLength(const unsigned romptr, unsigned& param, unsigned& param2) const
+    bool IsTrailerParamRoutineWithLength(const unsigned romptr, unsigned& param, unsigned& param2, unsigned& param3) const
     {
         bool res = IsSpecialType(romptr, TrailerParamRoutineWithLength);
         if(res)
         {
             param  = results[romptr].SpecialTypeParam;
             param2 = results[romptr].SpecialTypeParam2;
+            param3 = results[romptr].SpecialTypeParam3;
         }
         return res;
     }
@@ -2888,11 +2889,11 @@ private:
                         Mark(Next + param, CertainlyCode);
                     } }
 
-                    { unsigned param, param2;
-                    if(IsTrailerParamRoutineWithLength(Branch, param, param2))
+                    { unsigned param, param2, param3;
+                    if(IsTrailerParamRoutineWithLength(Branch, param, param2, param3))
                     {
                         if(results[Next].Type >= Unknown) Mark(Next, CertainlyData);
-                        unsigned length = ROM[Next + param] + param2;
+                        unsigned length = ROM[Next + param] * param3 + param2;
                         Mark(Next + length, CertainlyCode);
                     } }
 
@@ -3508,6 +3509,13 @@ public:
         results[romptr].SpecialTypeParam  = param;
         results[romptr].SpecialTypeParam2 = param2;
     }
+    void SetSpecialType(unsigned romptr, SpecialTypes type, unsigned param, unsigned param2, unsigned param3)
+    {
+        results[romptr].SpecialType       = type;
+        results[romptr].SpecialTypeParam  = param;
+        results[romptr].SpecialTypeParam2 = param2;
+        results[romptr].SpecialTypeParam3 = param3;
+    }
     void AddComment(unsigned romptr, const std::string& comment)
     {
         results[romptr].Comments.push_back(comment);
@@ -3687,11 +3695,14 @@ static void ParseINIfile(FILE* fp, Disassembler& dasm)
         }
         if(tokens[0] == "TrailerParamRoutineWithLength")
         {
-            if(tokens.size() != 4) goto SyntaxError;
+            if(tokens.size() < 3 || tokens.size() > 5) goto SyntaxError;
             int address     = ParseInt(tokens[1]);
             int length_at   = ParseInt(tokens[2]);
-            int length_plus = ParseInt(tokens[3]);
-            dasm.SetSpecialType(address, TrailerParamRoutineWithLength, length_at, length_plus);
+            int length_plus = 0;
+            if (tokens.size() >= 4) length_plus = ParseInt(tokens[3]);
+            int length_mult = 1;
+            if (tokens.size() >= 5) length_mult = ParseInt(tokens[4]);
+            dasm.SetSpecialType(address, TrailerParamRoutineWithLength, length_at, length_plus, length_mult);
             continue;
         }
         if(tokens[0] == "JumpTableRoutineWithAppendix")
